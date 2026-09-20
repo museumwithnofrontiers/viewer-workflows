@@ -23,6 +23,7 @@ import { test } from 'node:test'
 import {
   SCOPE,
   buildSiteList,
+  existingBranchAction,
   expandPackageName,
   gitIdentityArgs,
   ownerFromRemoteUrl,
@@ -255,4 +256,24 @@ test('buildSiteList: the zero-match error names what it searched for and how to 
     () => buildSiteList('metanull', [], () => ''),
     /template_repository = "metanull\/website-template".*--owner.*--repo/s
   )
+})
+
+// The branch the tool pushes is its own: a leftover on the site can only be a
+// previous propagation. On sites without delete-branch-on-merge the branch of
+// a merged pull request stays behind, and the next run's plain push was
+// rejected with "fetch first" — on 2026-09-20 that was four of the seven sites
+// twice in one day, each time fixed by deleting the branch by hand. The tool
+// now replaces such a leftover, and only refuses when the earlier pull request
+// is still open, since that one may be waiting on a person.
+
+test('existingBranchAction: no open pull request on the branch → replace the leftover', () => {
+  assert.deepEqual(existingBranchAction([]), { action: 'replace' })
+})
+
+test('existingBranchAction: an open pull request on the branch → skip, naming it', () => {
+  const open = [{ url: 'https://github.com/museumwithnofrontiers/carpets/pull/70' }]
+  assert.deepEqual(existingBranchAction(open), {
+    action: 'skip',
+    url: 'https://github.com/museumwithnofrontiers/carpets/pull/70',
+  })
 })
