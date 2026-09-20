@@ -102,6 +102,19 @@ an operator would see immediately after the org move if they ran the tool
 from a stale checkout or without `--owner`, and it must never be
 indistinguishable from a real, quiet propagation.
 
+The branch it pushes, `chore/propagate-platform-packages`, belongs to the
+tool. A site that does not delete branches on merge keeps that branch after
+the pull request lands, and the next propagation finds it in the way. The tool
+replaces such a leftover on its own. It only steps back, reporting the site as
+`pending`, when a pull request is still **open** on that branch: an earlier
+propagation waiting on a person is never overwritten. Merge or close that pull
+request, then rerun with `--repo` for that site.
+
+The commit identity comes from `GIT_AUTHOR_*`/`GIT_COMMITTER_*` if you pass
+them (`-e GIT_AUTHOR_NAME=…` and so on), otherwise from the container's git
+config, otherwise it is derived from the `gh` login. Pass them when the
+propagation commits should carry the same identity as your other commits.
+
 ### Step 3, by hand
 
 The tool only removes repetition; the procedure stands without it. Per site:

@@ -376,6 +376,26 @@ export function scopedDeps(dir, scope = SCOPE) {
     .sort()
 }
 
+/**
+ * What to do when the site already carries a BRANCH. That branch name belongs
+ * to this tool — nothing else pushes to it — so a leftover is one of two
+ * things, told apart by whether a pull request is still open on it:
+ *   - open PR: an earlier propagation has not landed (red CI waiting for a
+ *     person, or simply not merged yet). Leave it alone and report it; pushing
+ *     over it would silently rewrite a pull request someone may be reading.
+ *   - no open PR: the branch survived its merged (or closed) pull request
+ *     because the site repository does not delete branches on merge. Nothing
+ *     on it is worth keeping: replace it.
+ * Before this distinction existed the second case rejected the push with
+ * "fetch first" on every site without delete-branch-on-merge, and the only
+ * remedy was deleting the branch by hand and rerunning the tool per site.
+ */
+export function existingBranchAction(openPullRequests) {
+  return openPullRequests.length
+    ? { action: 'skip', url: openPullRequests[0].url }
+    : { action: 'replace' }
+}
+
 function propagateTo(repo, { dryRun, merge, identityArgs }) {
   const work = mkdtempSync(join(tmpdir(), 'propagate-'))
   try {
@@ -408,6 +428,14 @@ function propagateTo(repo, { dryRun, merge, identityArgs }) {
 
     if (dryRun) return { repo, status: 'would-update', detail: versions }
 
+    const open = JSON.parse(
+      gh(['pr', 'list', '--repo', repo, '--head', BRANCH, '--state', 'open', '--json', 'url'], { cwd: work })
+    )
+    const existing = existingBranchAction(open)
+    if (existing.action === 'skip') {
+      return { repo, status: 'pending', detail: `an earlier propagation is still open: ${existing.url}` }
+    }
+
     run('git', ['checkout', '-b', BRANCH], { cwd: work, stdio: 'pipe' })
     run('git', ['add', 'package.json', 'package-lock.json'], { cwd: work, stdio: 'pipe' })
 
@@ -424,7 +452,12 @@ function propagateTo(repo, { dryRun, merge, identityArgs }) {
       'context, before the site adopts it.\n'
     )
     run('git', [...identityArgs, 'commit', '-F', body], { cwd: work, stdio: 'pipe' })
-    run('git', ['push', '-u', 'origin', BRANCH], { cwd: work, stdio: 'pipe' })
+    // `--force`, not `--force-with-lease`: the shallow clone above fetched only
+    // the default branch, so there is no remote-tracking ref to hold a lease
+    // against. The safety is existingBranchAction(): by the time this push
+    // runs, whatever the remote BRANCH holds is a leftover with no open pull
+    // request, which is exactly what `replace` means.
+    run('git', ['push', '--force', '-u', 'origin', BRANCH], { cwd: work, stdio: 'pipe' })
 
     // --head is required alongside --repo: with an explicit repo, `gh` does not
     // infer the branch from the working directory.
@@ -445,7 +478,8 @@ function propagateTo(repo, { dryRun, merge, identityArgs }) {
 
 // Guarded so a test can `import` this module for its pure helpers (SCOPE,
 // TEMPLATE_REPO, parseArgs, expandPackageName, scopedDeps, resolveGitIdentity,
-// gitIdentityArgs, resolveOwner, ownerFromRemoteUrl, buildSiteList) without
+// gitIdentityArgs, resolveOwner, ownerFromRemoteUrl, buildSiteList,
+// existingBranchAction) without
 // running the CLI — which talks to `gh` and the registry from its very first
 // line.
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
@@ -482,9 +516,17 @@ if (isMain) {
   })
 
   const failed = results.filter((r) => r.status === 'failed')
+  const pending = results.filter((r) => r.status === 'pending')
   console.log(`\n${results.filter((r) => r.status === 'opened').length} opened, ` +
     `${results.filter((r) => r.status === 'current').length} already current, ` +
-    `${failed.length} failed`)
+    `${pending.length} pending, ${failed.length} failed`)
+
+  // Not a failure of this run: the site is waiting on a person to merge or
+  // close the earlier pull request, and that decision is not the tool's.
+  if (pending.length) {
+    console.log('\nPending (merge or close the earlier pull request, then rerun with --repo):')
+    for (const p of pending) console.log(`  ${p.repo}: ${p.detail}`)
+  }
 
   if (failed.length) {
     console.log('\nFailed:')
