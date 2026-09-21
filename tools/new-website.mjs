@@ -808,9 +808,9 @@ if (isMain) {
   if (content?.prUrl) report('[Pull request]', content.prUrl)
   if (!opts.settingsOnly && !opts.dryRun) {
     console.log(
-      '\nNext (not scripted here): the texts PR (scripts/site-i18n extraction), the\n' +
-      '.new-architecture submodule pointer and dependents.json entry in inventory-app,\n' +
-      'and the inventory-app Dependabot entry — see inventory-app docs/deployment/new-website.md.'
+      '\nNext (not scripted here): the texts PR, the catalogue/sheet/theme,\n' +
+      'the .new-architecture/<slug> submodule in inventory-app, and the\n' +
+      'discovery dry-run — see inventory-app docs/deployment/new-website.md.'
     )
   }
 }

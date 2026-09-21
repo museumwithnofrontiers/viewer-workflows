@@ -162,8 +162,8 @@ first and only changes what is missing). Requires `gh` authenticated as an opera
 Two things stay by hand, on purpose, and are not this tool's job: the site's own content
 decisions (`dataset.config.js`, `theme/tokens.css` — website-template README step 6) once
 the scaffold PR is open, and the inventory-app side of standing the site up (the texts PR
-from `scripts/site-i18n`, the `.new-architecture` submodule pointer, the `dependents.json`
-entry, and the hand-maintained Dependabot entry) — see inventory-app's
+from `scripts/site-i18n`, the catalogue/sheet/theme, the `.new-architecture` submodule
+pointer, and the discovery dry-run) — see inventory-app's
 `docs/deployment/new-website.md` for that recipe.
 
 ## Which websites are consumers
