@@ -130,6 +130,42 @@ gh pr create --fill && gh pr merge --auto --squash
 Use `npm install …@latest`, not `npm update`: update only moves within the
 declared range, so it does nothing when a release falls outside it.
 
+## Creating a website
+
+`tools/new-website.mjs` scripts the mechanical part of website-template's
+README, "Admin — creating a new website": create the repository from the
+template, switch on the settings every live site carries (Pages, the
+`main-requires-pr` ruleset, classic branch protection with the four required
+checks, allow-auto-merge, delete-branch-on-merge, CodeQL default setup,
+Dependabot security updates and vulnerability alerts), then scaffold the
+first branch (replace the `__DATASET__`/`__SITE_CLASS__`/`__SITE_NAMESPACE__`
+placeholders, install `@museumwnf/<slug>-data@latest`, open the first PR).
+
+```bash
+export GH_TOKEN=$(gh auth token)
+docker run --rm -it \
+  -e GH_TOKEN \
+  -v "$PWD:/w" \
+  -w /w node:lts-alpine sh -c "apk add --no-cache git github-cli >/dev/null && \
+    node tools/new-website.mjs --slug carpets --class gallery --namespace carpets --title 'Carpets'"
+```
+
+Same container, same credential rules and the same `-v "$PWD:/w"` checkout requirement as
+"Step 3, with the tool" above — this tool shares `tools/gh-lib.mjs` with `propagate.mjs`,
+including `resolveOwner()`, so it needs the same things for the same reasons. Add
+`--dry-run` first to see what it would do without touching anything, or `--settings-only`
+to re-apply the settings phase to a repository that already exists (idempotent: it probes
+first and only changes what is missing). Requires `gh` authenticated as an operator with
+**admin** rights on the target org — repository administration is not a permission
+`GITHUB_TOKEN` can ever hold.
+
+Two things stay by hand, on purpose, and are not this tool's job: the site's own content
+decisions (`dataset.config.js`, `theme/tokens.css` — website-template README step 6) once
+the scaffold PR is open, and the inventory-app side of standing the site up (the texts PR
+from `scripts/site-i18n`, the `.new-architecture` submodule pointer, the `dependents.json`
+entry, and the hand-maintained Dependabot entry) — see inventory-app's
+`docs/deployment/new-website.md` for that recipe.
+
 ## Which websites are consumers
 
 Derived, never listed. A website is a repository created from

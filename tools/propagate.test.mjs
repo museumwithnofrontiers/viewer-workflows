@@ -21,16 +21,18 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 
 import {
-  SCOPE,
   buildSiteList,
   existingBranchAction,
   expandPackageName,
+  scopedDeps,
+} from './propagate.mjs'
+import {
+  SCOPE,
   gitIdentityArgs,
   ownerFromRemoteUrl,
   resolveGitIdentity,
   resolveOwner,
-  scopedDeps,
-} from './propagate.mjs'
+} from './gh-lib.mjs'
 
 // Mirrors metanull/islamicart's package.json dependencies block.
 const SITE_PACKAGE_JSON = {
