@@ -22,6 +22,19 @@ jobs:
     name: Build site
     runs-on: ubuntu-latest
     steps:
+      - name: Check that GitHub Pages is enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          build_type="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq .build_type 2>/dev/null)" || {
+            echo "::error::GitHub Pages is not enabled on ${GITHUB_REPOSITORY}. Run viewer-workflows/tools/new-website.mjs --settings-only --slug <name>, or Settings → Pages → Build and deployment → Source: GitHub Actions."
+            exit 1
+          }
+          if [ "$build_type" != "workflow" ]; then
+            echo "::error::GitHub Pages on ${GITHUB_REPOSITORY} is set to source '$build_type', not GitHub Actions. Set Settings → Pages → Build and deployment → Source: GitHub Actions."
+            exit 1
+          fi
+          echo "GitHub Pages build type: $build_type"
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:

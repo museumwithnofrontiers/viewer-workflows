@@ -13,14 +13,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Check for a lockfile
+        id: lockfile
+        run: |
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No lockfile yet: this repository has not had its first pull request. Skipping the audit."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-node@v7
+        if: steps.lockfile.outputs.present == 'true'
         with:
           node-version: lts/*
           cache: npm
       - name: Install dependencies
+        if: steps.lockfile.outputs.present == 'true'
         run: npm ci
       - name: Run npm audit
         id: audit
+        if: steps.lockfile.outputs.present == 'true'
         run: |
           set +e
           npm audit > audit.txt 2>&1
@@ -34,7 +46,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           cat audit.txt
       - name: Open or update the findings issue
-        if: steps.audit.outputs.status != '0'
+        if: steps.lockfile.outputs.present == 'true' && steps.audit.outputs.status != '0'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
