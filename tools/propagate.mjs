@@ -58,14 +58,24 @@
  * per site.
  */
 
-import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-export const SCOPE = '@museumwnf'
-export const TEMPLATE_REPO = 'website-template'
+import {
+  SCOPE,
+  TEMPLATE_REPO,
+  ensureGhAuth,
+  gh,
+  gitIdentityArgs,
+  hasLocalGitIdentity,
+  ownerFromRemoteUrl,
+  resolveGitIdentity,
+  resolveOwner,
+  run,
+} from './gh-lib.mjs'
+
 const BRANCH = 'chore/propagate-platform-packages'
 
 // ── Arguments ──────────────────────────────────────────────────────────────
@@ -95,115 +105,7 @@ export function parseArgs(argv) {
   return { expect, repos, owner, dryRun, merge }
 }
 
-// ── Shell helpers ──────────────────────────────────────────────────────────
-
-function run(cmd, args, opts = {}) {
-  return execFileSync(cmd, args, { encoding: 'utf8', ...opts }).trim()
-}
-
-function gh(args, opts = {}) {
-  return run('gh', args, opts)
-}
-
 // ── Preconditions ──────────────────────────────────────────────────────────
-
-/**
- * Fail fast, with an actionable message, if `gh` cannot authenticate — and
- * make sure `git push` will use that same authentication.
- *
- * Without this, the first symptom of a missing/unreachable token used to
- * surface deep in the first site's `git push` as a bare credential-helper
- * error ("could not read Username"), after discovery and the registry check
- * had already run. `gh auth setup-git` installs `gh` as git's credential
- * helper for its hosts (idempotent — safe to run on every invocation, on the
- * operator's own machine or in a fresh container alike), so a plain `git
- * push` in propagateTo() authenticates the same way `gh pr create` does.
- */
-function ensureGhAuth() {
-  try {
-    gh(['auth', 'status'])
-  } catch (error) {
-    throw new Error(
-      'gh is not authenticated (`gh auth status` failed).\n' +
-      '  · On the operator\'s own machine: run `gh auth login`.\n' +
-      '  · In a container: `gh auth login` on the host commonly stores the token in\n' +
-      '    the OS keyring (e.g. Windows Credential Manager), which the container\n' +
-      '    cannot reach — mounting ~/.config/gh alone carries no usable token then.\n' +
-      '    Pass the token instead: docker run -e GH_TOKEN=$(gh auth token) ...\n' +
-      String(error.stderr || error.message)
-    )
-  }
-  try {
-    gh(['auth', 'setup-git'])
-  } catch (error) {
-    throw new Error(`gh auth setup-git failed: ${String(error.stderr || error.message)}`)
-  }
-}
-
-/** Whether `git config` already resolves both `user.name` and `user.email` — a real
- * developer machine, or a container someone configured ahead of time. Config only:
- * GIT_AUTHOR_NAME/EMAIL and GIT_COMMITTER_NAME/EMAIL are environment overrides that
- * `git config --get` does not see, which is why resolveGitIdentity() below checks them as
- * a separate, higher-precedence step rather than folding them in here. */
-function hasLocalGitIdentity() {
-  try {
-    run('git', ['config', '--get', 'user.name'])
-    run('git', ['config', '--get', 'user.email'])
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
- * Decide whether `git commit` already has an author identity to work with, and if not,
- * derive one — so the tool remains usable in the disposable container it is documented to
- * run in (see file header), which starts with neither.
- *
- * Precedence, and why:
- *   1. GIT_AUTHOR_NAME/EMAIL + GIT_COMMITTER_NAME/EMAIL already set in the environment:
- *      git already reads these for every commit, and an operator who exported them on
- *      purpose should win over anything this tool would guess.
- *   2. `git config user.name`/`user.email` already resolve: leave them alone, the same way
- *      ensureGhAuth() above leaves an existing `gh auth login` alone rather than
- *      re-authenticating over it.
- *   3. Otherwise, derive one from the GitHub identity this tool already has to
- *      authenticate — `user`, the `gh api user` response fetched once in main() and reused
- *      here. `login` and the numeric `id` give the conventional GitHub no-reply address, so
- *      a commit made through this tool is attributed to whoever ran it rather than to an
- *      anonymous default, which matters because these commits land as PRs across the
- *      estate.
- *
- * Returns `null` when an identity already exists (cases 1–2, nothing to do), or
- * `{ name, email }` derived from the GitHub account (case 3). Throws, once, up front —
- * before any site is touched — if none of the above can supply one, rather than letting
- * `git commit` fail with the same opaque error again for every site in turn.
- */
-export function resolveGitIdentity(user, env, hasLocalIdentity) {
-  const hasEnvIdentity = ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL']
-    .every((key) => env[key])
-  if (hasEnvIdentity || hasLocalIdentity) return null
-
-  if (!user?.login || !user?.id) {
-    throw new Error(
-      'No git commit identity is available, and none could be derived.\n' +
-      '  · Set GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL and GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL, or\n' +
-      '  · run `git config --global user.name`/`user.email` in this container, or\n' +
-      '  · make sure `gh api user` returns a "login" and numeric "id" (it already must, for\n' +
-      '    gh itself to be authenticated).'
-    )
-  }
-
-  return { name: user.login, email: `${user.id}+${user.login}@users.noreply.github.com` }
-}
-
-/** `git -c user.name=... -c user.email=...` arguments to prepend to a single `commit`
- * invocation for a derived identity, or `[]` to change nothing when `identity` is `null`
- * (git already has one). Per-invocation rather than `git config --global`: this tool should
- * not reconfigure the machine or container it happens to run in. */
-export function gitIdentityArgs(identity) {
-  return identity ? ['-c', `user.name=${identity.name}`, '-c', `user.email=${identity.email}`] : []
-}
 
 /** A bare package name given on the command line, qualified with SCOPE. A name already carrying its own scope (e.g. a one-off `@other/pkg`) passes through unchanged. */
 export function expandPackageName(name, scope = SCOPE) {
@@ -240,69 +142,6 @@ function verifyPublished(expect) {
     }
     console.log(`  verified ${full}@${version}`)
   }
-}
-
-// ── Owner resolution ─────────────────────────────────────────────────────
-
-/**
- * The GitHub owner (user or org) that discoverSites() searches under, and that a
- * candidate site's `template_repository` is checked against.
- *
- * This must be a property of the estate — the account that currently owns
- * `website-template` and the sites created from it — never the login of
- * whoever happens to be running the tool. Before this existed, the owner was
- * `gh api user`'s login: that already matches nothing for any collaborator
- * whose own account does not own the sites, and it will match nothing for
- * *everyone* the day the estate moves from the personal account `metanull` to
- * the org `museumwithnofrontiers`.
- *
- * Precedence:
- *   1. `--owner`, explicit and authoritative — the escape hatch for a
- *      checkout without a usable `origin`, or a deliberate one-off run
- *      against a different estate.
- *   2. The `origin` remote of the git checkout this script is running from.
- *      MAINTENANCE.md's documented invocation mounts an existing
- *      viewer-workflows checkout into the container and runs the script from
- *      its root (`-v "$PWD:/w" -w /w ... node tools/propagate.mjs`), so that
- *      checkout's own remote already names the estate's current owner — and
- *      keeps naming it correctly across the org move, since re-cloning from
- *      the new location is the thing that actually performs that move for
- *      the operator, with nothing to update in this tool.
- */
-export function resolveOwner(explicitOwner, cwd = process.cwd()) {
-  if (explicitOwner) return explicitOwner
-
-  let url
-  try {
-    url = run('git', ['remote', 'get-url', 'origin'], { cwd })
-  } catch (error) {
-    throw new Error(
-      'Could not determine the GitHub owner to search under: `git remote get-url origin`\n' +
-      `failed in ${cwd}.\n` +
-      '  · Pass --owner <login-or-org> explicitly, or\n' +
-      '  · run this from within a checkout of viewer-workflows that has an `origin`\n' +
-      `    remote pointing at GitHub.\n${String(error.stderr || error.message)}`
-    )
-  }
-
-  const owner = ownerFromRemoteUrl(url)
-  if (!owner) {
-    throw new Error(
-      `Could not parse a GitHub owner out of the \`origin\` remote "${url}".\n` +
-      '  · Pass --owner <login-or-org> explicitly instead.'
-    )
-  }
-  return owner
-}
-
-/**
- * Pulls the owner out of a GitHub remote URL, SSH or HTTPS alike:
- * "git@github.com:owner/repo.git" and "https://github.com/owner/repo" both give "owner".
- * Returns null for a remote that isn't a github.com URL at all.
- */
-export function ownerFromRemoteUrl(url) {
-  const match = url.match(/github\.com[:/]([^/]+)\//)
-  return match ? match[1] : null
 }
 
 // ── Discovery ──────────────────────────────────────────────────────────────
@@ -476,12 +315,11 @@ function propagateTo(repo, { dryRun, merge, identityArgs }) {
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
-// Guarded so a test can `import` this module for its pure helpers (SCOPE,
-// TEMPLATE_REPO, parseArgs, expandPackageName, scopedDeps, resolveGitIdentity,
-// gitIdentityArgs, resolveOwner, ownerFromRemoteUrl, buildSiteList,
-// existingBranchAction) without
-// running the CLI — which talks to `gh` and the registry from its very first
-// line.
+// Guarded so a test can `import` this module for its pure helpers
+// (parseArgs, expandPackageName, scopedDeps, buildSiteList,
+// existingBranchAction — the gh/git plumbing they used to share with
+// new-website.mjs now lives in ./gh-lib.mjs) without running the CLI —
+// which talks to `gh` and the registry from its very first line.
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
 if (isMain) {
   const { expect, repos, owner, dryRun, merge } = parseArgs(process.argv.slice(2))

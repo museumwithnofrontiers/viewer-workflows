@@ -12,6 +12,17 @@ Reusable GitHub Actions workflows for the MWNF Website Platform. Reference them 
 | `package-ci.yml` | package repos | PR checks: unit tests, `npm pack`, downstream build matrix over every website, using the PR's tarball. If the PR renames `package.json`'s `name`, the tarball is additionally alias-installed under the pre-rename name in every downstream build, so sites still importing the old name are actually tested against this PR's code instead of silently passing against the last published version | — | — (websites are discovered from the `website-template` link) |
 | `package-release.yml` | package repos | `npm publish` to npmjs via trusted publishing, version taken from the release tag | `publish_mode` (`direct` \| `staged`, default `direct`) | A trusted publisher configured on npmjs.com for this repo + the *calling* workflow's filename (no secret) — see [Publishing to npmjs](#publishing-to-npmjs) |
 
+## Operator tools
+
+Two scripts under `tools/`, run by an operator from their own machine (never in CI), sharing
+the `gh`/git plumbing in `tools/gh-lib.mjs`. Full usage and the container invocation for
+each: [MAINTENANCE.md](MAINTENANCE.md).
+
+| Tool | Does |
+|---|---|
+| `tools/propagate.mjs` | Step 3 of [the release flow](MAINTENANCE.md#the-flow): rolls a newly published `@museumwnf` package out to every website, one pull request per site. |
+| `tools/new-website.mjs` | [Creating a website](MAINTENANCE.md#creating-a-website): creates a repository from `website-template`, applies the settings every live site carries (Pages, ruleset, branch protection, CodeQL, …), and opens the first scaffold pull request. |
+
 ## Package installs
 
 No workflow takes a secret, and no PAT is ever stored (since v1.1.2; the
