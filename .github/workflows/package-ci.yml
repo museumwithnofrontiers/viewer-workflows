@@ -89,12 +89,14 @@ jobs:
       matrix: ${{ steps.read.outputs.matrix }}
       count: ${{ steps.read.outputs.count }}
     steps:
-      # A website is, by definition, a repository created from the estate
-      # owner's website-template (resolved below via github.repository_owner,
-      # never hardcoded, since that owner has already moved once) — GitHub
-      # records the link permanently as `template_repository`. Deriving the
-      # list from it means a new site is a downstream consumer the moment it
-      # exists, with no file to maintain.
+      # A website is, by definition, a repository created from one of the
+      # estate owner's site templates — website-template for a product,
+      # gallery-template and exhibition-template for the DXA families (the
+      # same list as tools/gh-lib.mjs's SITE_TEMPLATES) — the owner resolved
+      # below via github.repository_owner, never hardcoded, since it has
+      # already moved once. GitHub records the link permanently as
+      # `template_repository`. Deriving the list from it means a new site is a
+      # downstream consumer the moment it exists, with no file to maintain.
       #
       # This replaces the hand-written dependents.json, which had to be edited
       # in BOTH package repos for every new site and was the source of a
@@ -109,21 +111,38 @@ jobs:
       # transferred in from elsewhere, would not appear — so the resolved list
       # and its count are printed on every run, and an unexpected drop is
       # visible in the log.
-      - name: Discover repositories created from the website template
+      #
+      # A site whose scaffold pull request has not merged yet has no
+      # package-lock.json on its default branch: its downstream job could only
+      # fail, at setup-node, and hold every package release back until the
+      # site merged — which may itself wait on that release
+      # (museumwithnofrontiers/viewer-workflows#30). Such a site is left out
+      # of the matrix and listed under "Skipped, not yet scaffolded", so the
+      # drop is visible; tools/propagate.mjs skips it the same way.
+      - name: Discover repositories created from a site template
         id: read
         env:
           GH_TOKEN: ${{ github.token }}
-          TEMPLATE: ${{ github.repository_owner }}/website-template
+          OWNER: ${{ github.repository_owner }}
+          TEMPLATES: website-template gallery-template exhibition-template
         run: |
           set -euo pipefail
-          repos="$(gh api "users/${{ github.repository_owner }}/repos?per_page=100&type=owner" \
+          repos="$(gh api "users/$OWNER/repos?per_page=100&type=owner" \
             --paginate --jq '.[] | select(.archived == false) | .name')"
           found=""
+          skipped=""
           for repo in $repos; do
-            template="$(gh api "repos/${{ github.repository_owner }}/$repo" \
+            template="$(gh api "repos/$OWNER/$repo" \
               --jq '.template_repository.full_name // ""')"
-            if [ "$template" = "$TEMPLATE" ]; then
-              found="$found ${{ github.repository_owner }}/$repo"
+            site=""
+            for name in $TEMPLATES; do
+              if [ "$template" = "$OWNER/$name" ]; then site="$OWNER/$repo"; fi
+            done
+            [ -n "$site" ] || continue
+            if gh api "repos/$site/contents/package-lock.json" --silent 2>/dev/null; then
+              found="$found $site"
+            else
+              skipped="$skipped $site"
             fi
           done
           matrix="$(printf '%s\n' $found | jq -R -s -c 'split("\n") | map(select(length > 0)) | sort')"
@@ -134,9 +153,18 @@ jobs:
             echo "## Websites discovered: $count"
             echo ""
             echo "$matrix" | jq -r '.[] | "- \(.)"'
+            if [ -n "$skipped" ]; then
+              echo ""
+              echo "## Skipped, not yet scaffolded"
+              echo ""
+              echo "No package-lock.json on the default branch: the scaffold pull request has not merged."
+              echo ""
+              for site in $skipped; do echo "- $site"; done
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Discovered $count website(s) from $TEMPLATE:"
+          echo "Discovered $count website(s) from $TEMPLATES:"
           echo "$matrix" | jq -r '.[] | "  \(.)"'
+          for site in $skipped; do echo "  skipped, not yet scaffolded: $site"; done
           if [ "$count" -eq 0 ]; then
             echo "::notice::No websites found - no downstream builds to run."
           fi

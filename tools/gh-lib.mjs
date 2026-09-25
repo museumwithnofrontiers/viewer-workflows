@@ -17,7 +17,20 @@
 import { execFileSync } from 'node:child_process'
 
 export const SCOPE = '@museumwnf'
+
+// The templates a website is created from: a product from `website-template`,
+// a gallery or an exhibition from its family's template. A repository of the
+// estate's owner whose `template_repository` is one of these is a website.
+// package-ci.yml's "Discover websites" lists the same three.
+export const SITE_TEMPLATES = ['website-template', 'gallery-template', 'exhibition-template']
+
+// The template `new-website.mjs` creates a product from.
 export const TEMPLATE_REPO = 'website-template'
+
+/** Whether `fullName` (a `template_repository`) is one of `owner`'s site templates. */
+export function isSiteTemplate(owner, fullName) {
+  return SITE_TEMPLATES.some((name) => fullName === `${owner}/${name}`)
+}
 
 // ── Shell helpers ──────────────────────────────────────────────────────────
 

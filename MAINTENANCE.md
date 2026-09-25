@@ -168,11 +168,19 @@ pointer, and the discovery dry-run) — see inventory-app's
 
 ## Which websites are consumers
 
-Derived, never listed. A website is a repository created from
-`website-template`, and GitHub records that permanently as
-`template_repository`. Both `package-ci.yml`'s downstream matrix and
-`tools/propagate.mjs` read it, so the set of sites validated before a release
-and the set updated after it cannot drift apart.
+Derived, never listed. A website is a repository created from one of the
+three site templates — `website-template` for a product, `gallery-template`
+and `exhibition-template` for the DXA families — and GitHub records that
+permanently as `template_repository`. Both `package-ci.yml`'s downstream
+matrix and `tools/propagate.mjs` read it (the list is `SITE_TEMPLATES` in
+`tools/gh-lib.mjs`, repeated in the workflow), so the set of sites validated
+before a release and the set updated after it cannot drift apart.
+
+A site whose scaffold pull request has not merged yet has no
+`package-lock.json` on its default branch. Both skip it, and name it under
+"skipped, not yet scaffolded": its downstream job could only fail at
+`setup-node` and hold every package release back, while the scaffold itself
+may be waiting on that release (#30).
 
 This replaced a hand-written `dependents.json` kept in both package repos,
 which had to be edited in two places for every new site and, until the
