@@ -24,6 +24,7 @@ import {
   buildSiteList,
   existingBranchAction,
   expandPackageName,
+  scaffoldedOnly,
   scopedDeps,
 } from './propagate.mjs'
 import {
@@ -256,8 +257,31 @@ test('buildSiteList: zero matches throws instead of returning an empty list — 
 test('buildSiteList: the zero-match error names what it searched for and how to fix it', () => {
   assert.throws(
     () => buildSiteList('metanull', [], () => ''),
-    /template_repository = "metanull\/website-template".*--owner.*--repo/s
+    /"metanull\/website-template", "metanull\/gallery-template", "metanull\/exhibition-template".*--owner.*--repo/s
   )
+})
+
+test('buildSiteList: a site from any of the three templates is a website; another template is not', () => {
+  const templates = {
+    carpets: 'museumwithnofrontiers/gallery-template',
+    'water-in-islam': 'museumwithnofrontiers/exhibition-template',
+    islamicart: 'museumwithnofrontiers/website-template',
+    elsewhere: 'someone-else/gallery-template',
+    unrelated: 'museumwithnofrontiers/some-other-template',
+  }
+  const sites = buildSiteList('museumwithnofrontiers', Object.keys(templates), (name) => templates[name])
+  assert.deepEqual(sites, [
+    'museumwithnofrontiers/carpets',
+    'museumwithnofrontiers/islamicart',
+    'museumwithnofrontiers/water-in-islam',
+  ])
+})
+
+test('scaffoldedOnly: a site with no package-lock.json yet is skipped, and named', () => {
+  const locked = new Set(['o/carpets', 'o/islamicart'])
+  const { ready, skipped } = scaffoldedOnly(['o/carpets', 'o/new-gallery', 'o/islamicart'], (site) => locked.has(site))
+  assert.deepEqual(ready, ['o/carpets', 'o/islamicart'])
+  assert.deepEqual(skipped, ['o/new-gallery'])
 })
 
 // The branch the tool pushes is its own: a leftover on the site can only be a
