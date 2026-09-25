@@ -130,16 +130,53 @@ gh pr create --fill && gh pr merge --auto --squash
 Use `npm install …@latest`, not `npm update`: update only moves within the
 declared range, so it does nothing when a release falls outside it.
 
+### After the sites: the three templates
+
+Propagation reaches every website, but not the templates they are created
+from: `website-template`, `gallery-template` and `exhibition-template` carry
+no lockfile, so discovery skips them. A release a site had to adopt — a new
+major, a range the sites moved to, a file every site changed, a pinned
+viewer-workflows version — is therefore followed, the same day, by the same
+change in each template it concerns: the `package.json` ranges and the files.
+A template that lags hands its next site an old platform.
+
+Verify a template by instantiating it: replace its placeholders with its
+reference site's own values (carpets for `gallery-template`, water-in-islam
+for `exhibition-template`, any dataset for `website-template`), install, and
+run the checks. The family templates' smoke tests keep a few curatorial picks
+as `TODO(dataset)` on purpose; those tests fail the same way before and after,
+and nothing else may.
 ## Creating a website
 
-`tools/new-website.mjs` scripts the mechanical part of website-template's
-README, "Admin — creating a new website": create the repository from the
-template, switch on the settings every live site carries (Pages, the
-`main-requires-pr` ruleset, classic branch protection with the four required
-checks, allow-auto-merge, delete-branch-on-merge, CodeQL default setup,
-Dependabot security updates and vulnerability alerts), then scaffold the
-first branch (replace the `__DATASET__`/`__SITE_CLASS__`/`__SITE_NAMESPACE__`
+`tools/new-website.mjs` scripts the mechanical part of the templates' READMEs,
+"Admin — creating a new website": create the repository from the template of
+its `--class` (`website-template` for a product, `gallery-template` or
+`exhibition-template` for the DXA families — decision D5), switch on the
+settings every live site carries (Pages, the `main-requires-pr` ruleset,
+classic branch protection with the four required checks, allow-auto-merge,
+delete-branch-on-merge, CodeQL default setup, Dependabot security updates and
+vulnerability alerts), then scaffold the first branch (replace the template's
 placeholders, install `@museumwnf/<slug>-data@latest`, open the first PR).
+
+A gallery or an exhibition also needs its own colours: the family templates'
+palettes are placeholders their install guard refuses (inventory-app#2046,
+#2047), so `--palette <file.json>` is required for those two classes. One entry
+per `__PALETTE_<NAME>__` placeholder of the template's `src/styles/site.css`
+(the comment above them says where the legacy values are), keyed by `<NAME>`:
+
+```json
+{ "THEME_DARK": "#504819", "THEME_DARK_RGB": "80, 72, 25", "THEME_MEDIUM_DARK": "#6b612b",
+  "THEME_MEDIUM": "#7e743e", "THEME_LIGHT": "#91864d", "BACKGROUND_COLOR": "#fffff0" }
+```
+
+The tool checks it against the template before creating anything.
+
+A gallery or an exhibition can also be created without this tool: "Use this
+template" on the family template's GitHub page, then its own
+`scripts/setup-repo.sh`/`.ps1`, which apply the same settings. That makes the
+settings two copies — `canonicalRuleset()`/`canonicalProtection()` here and the
+family templates' setup scripts — so a change to one is a change to the
+others.
 
 ```bash
 export GH_TOKEN=$(gh auth token)
@@ -147,7 +184,7 @@ docker run --rm -it \
   -e GH_TOKEN \
   -v "$PWD:/w" \
   -w /w node:lts-alpine sh -c "apk add --no-cache git github-cli >/dev/null && \
-    node tools/new-website.mjs --slug carpets --class gallery --namespace carpets --title 'Carpets'"
+    node tools/new-website.mjs --slug carpets --class gallery --namespace carpets --title 'Carpets' --palette carpets.json"
 ```
 
 Same container, same credential rules and the same `-v "$PWD:/w"` checkout requirement as
@@ -160,7 +197,7 @@ first and only changes what is missing). Requires `gh` authenticated as an opera
 `GITHUB_TOKEN` can ever hold.
 
 Two things stay by hand, on purpose, and are not this tool's job: the site's own content
-decisions (`dataset.config.js`, `theme/tokens.css` — website-template README step 6) once
+decisions (a product's `dataset.config.js` and `theme/tokens.css` — website-template README step 6) once
 the scaffold PR is open, and the inventory-app side of standing the site up (the texts PR
 from `scripts/site-i18n`, the catalogue/sheet/theme, the `.new-architecture` submodule
 pointer, and the discovery dry-run) — see inventory-app's

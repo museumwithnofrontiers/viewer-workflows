@@ -24,8 +24,6 @@ export const SCOPE = '@museumwnf'
 // package-ci.yml's "Discover websites" lists the same three.
 export const SITE_TEMPLATES = ['website-template', 'gallery-template', 'exhibition-template']
 
-// The template `new-website.mjs` creates a product from.
-export const TEMPLATE_REPO = 'website-template'
 
 /** Whether `fullName` (a `template_repository`) is one of `owner`'s site templates. */
 export function isSiteTemplate(owner, fullName) {
