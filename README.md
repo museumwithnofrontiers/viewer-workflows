@@ -9,7 +9,7 @@ Reusable GitHub Actions workflows for the MWNF Website Platform. Reference them 
 | `locale-validate.yml` | website repos, `viewer-i18n` | Validate the repository's texts with the rules published by [`museumwithnofrontiers/viewer-i18n`](https://github.com/museumwithnofrontiers/viewer-i18n); auto-merge text-only PRs when green; plain-language PR comment on failure | `mode` (`site` \| `dictionary`, default `site`), `texts_path` (default `locales/`), `dictionary_ref` (default `main`) — output: `locales_only` | "Allow auto-merge" enabled |
 | `dependabot-automerge.yml` | all repos | Auto-merge Dependabot minor/patch bumps of the reusable workflows and dev-dependency patches; majors wait for a human. The `@museumwnf` platform packages are not covered — their rollout is propagated by the operator instead; see [MAINTENANCE.md](MAINTENANCE.md) | — | "Allow auto-merge" enabled |
 | `audit-scheduled.yml` | all repos | Scheduled `npm audit`; opens or updates the issue "npm audit findings"; skips with a notice instead of failing when the repo has no lockfile yet (before its first pull request) | — | — |
-| `package-ci.yml` | package repos | PR checks: unit tests, `npm pack`, downstream build matrix over every website, using the PR's tarball. If the PR renames `package.json`'s `name`, the tarball is additionally alias-installed under the pre-rename name in every downstream build, so sites still importing the old name are actually tested against this PR's code instead of silently passing against the last published version | — | — (websites are discovered from the `website-template` link) |
+| `package-ci.yml` | package repos | PR checks: unit tests, `npm pack`, downstream build matrix over every website, using the PR's tarball. If the PR renames `package.json`'s `name`, the tarball is additionally alias-installed under the pre-rename name in every downstream build, so sites still importing the old name are actually tested against this PR's code instead of silently passing against the last published version | — | — (websites are discovered from their link to one of the three site templates) |
 | `package-release.yml` | package repos | `npm publish` to npmjs via trusted publishing, version taken from the release tag | `publish_mode` (`direct` \| `staged`, default `direct`) | A trusted publisher configured on npmjs.com for this repo + the *calling* workflow's filename (no secret) — see [Publishing to npmjs](#publishing-to-npmjs) |
 
 ## Operator tools
@@ -21,7 +21,7 @@ each: [MAINTENANCE.md](MAINTENANCE.md).
 | Tool | Does |
 |---|---|
 | `tools/propagate.mjs` | Step 3 of [the release flow](MAINTENANCE.md#the-flow): rolls a newly published `@museumwnf` package out to every website, one pull request per site. |
-| `tools/new-website.mjs` | [Creating a website](MAINTENANCE.md#creating-a-website): creates a repository from `website-template`, applies the settings every live site carries (Pages, ruleset, branch protection, CodeQL, …), and opens the first scaffold pull request. |
+| `tools/new-website.mjs` | [Creating a website](MAINTENANCE.md#creating-a-website): creates a repository from its class's site template (`website-template`, `gallery-template` or `exhibition-template`), applies the settings every live site carries (Pages, ruleset, branch protection, CodeQL, …), and opens the first scaffold pull request. |
 
 ## Package installs
 

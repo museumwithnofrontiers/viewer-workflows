@@ -31,6 +31,8 @@ import {
   parseArgs,
   parseConfiguredFiles,
   parseNamePlaceholder,
+  paletteReplacements,
+  parsePaletteFile,
   parseTextPlaceholders,
   protectionNeedsChange,
   repoExists,
@@ -38,18 +40,20 @@ import {
   rulesetNeedsChange,
   securityFixesNeedChange,
   stableStringify,
+  templateFor,
 } from './new-website.mjs'
 
 // ── parseArgs ────────────────────────────────────────────────────────────
 
 test('parseArgs: the full required set for a real scaffold', () => {
   const opts = parseArgs([
-    '--slug', 'carpets', '--class', 'gallery', '--namespace', 'carpets', '--title', 'Carpets',
+    '--slug', 'carpets', '--class', 'gallery', '--namespace', 'carpets', '--title', 'Carpets', '--palette', 'carpets.json',
   ])
   assert.equal(opts.slug, 'carpets')
   assert.equal(opts.class, 'gallery')
   assert.equal(opts.namespace, 'carpets')
   assert.equal(opts.title, 'Carpets')
+  assert.equal(opts.palette, 'carpets.json')
   assert.equal(opts.owner, null)
   assert.equal(opts.dryRun, false)
   assert.equal(opts.settingsOnly, false)
@@ -99,17 +103,40 @@ test('parseArgs: class must be one of gallery/exhibition/standalone', () => {
 
 test('parseArgs: namespace is one lowercase word, no hyphens — camelCase allowed', () => {
   assert.throws(
-    () => parseArgs(['--slug', 'x', '--class', 'gallery', '--namespace', 'water-in-islam', '--title', 'X']),
+    () => parseArgs(['--slug', 'x', '--class', 'standalone', '--namespace', 'water-in-islam', '--title', 'X']),
     /--namespace must be one lowercase word/
   )
   assert.throws(
-    () => parseArgs(['--slug', 'x', '--class', 'gallery', '--namespace', 'Carpets', '--title', 'X']),
+    () => parseArgs(['--slug', 'x', '--class', 'standalone', '--namespace', 'Carpets', '--title', 'X']),
     /--namespace must be one lowercase word/
   )
   assert.equal(
-    parseArgs(['--slug', 'x', '--class', 'exhibition', '--namespace', 'waterInIslam', '--title', 'X']).namespace,
+    parseArgs(['--slug', 'x', '--class', 'standalone', '--namespace', 'waterInIslam', '--title', 'X']).namespace,
     'waterInIslam'
   )
+})
+
+test('parseArgs: a gallery or an exhibition needs its --palette; a product takes none', () => {
+  for (const cls of ['gallery', 'exhibition']) {
+    assert.throws(
+      () => parseArgs(['--slug', 'x', '--class', cls, '--namespace', 'x', '--title', 'X']),
+      /--palette <file.json> is required/
+    )
+  }
+  assert.equal(parseArgs(['--slug', 'x', '--class', 'standalone', '--namespace', 'x', '--title', 'X']).palette, null)
+  assert.throws(
+    () => parseArgs(['--slug', 'x', '--class', 'standalone', '--namespace', 'x', '--title', 'X', '--palette', 'p.json']),
+    /--palette is for a gallery or an exhibition/
+  )
+  // --settings-only touches no content, so no palette.
+  assert.equal(parseArgs(['--settings-only', '--slug', 'carpets']).palette, null)
+})
+
+test('templateFor: each class its own template (decision D5)', () => {
+  assert.equal(templateFor('standalone'), 'website-template')
+  assert.equal(templateFor('gallery'), 'gallery-template')
+  assert.equal(templateFor('exhibition'), 'exhibition-template')
+  assert.throws(() => templateFor('museum'), /No template for class/)
 })
 
 test('parseArgs: unknown argument throws', () => {
@@ -433,6 +460,91 @@ test('applyReplacements + the real check-placeholders.js: a fully-replaced tree 
 
     // Throws (non-zero exit) if check-placeholders.js still finds a placeholder.
     assert.doesNotThrow(() => execFileSync('node', ['scripts/check-placeholders.js'], { cwd: dir, encoding: 'utf8' }))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// ── The family templates: __SITE_NAME__ and the palette ──────────────────
+
+// museumwithnofrontiers/gallery-template, scripts/check-placeholders.js, verbatim.
+const GALLERY_CHECK_PLACEHOLDERS = readFileSync(
+  new URL('./__fixtures__/gallery-check-placeholders.js', import.meta.url),
+  'utf8'
+)
+
+const GALLERY_PALETTE_CSS = `:root {
+  --theme-dark:        __PALETTE_THEME_DARK__;
+  --theme-dark-rgb:    __PALETTE_THEME_DARK_RGB__;
+  --theme-medium-dark: __PALETTE_THEME_MEDIUM_DARK__;
+  --theme-medium:      __PALETTE_THEME_MEDIUM__;
+  --theme-light:       __PALETTE_THEME_LIGHT__;
+  --background-color:  __PALETTE_BACKGROUND_COLOR__;
+}
+`
+
+const CARPETS = {
+  THEME_DARK: '#504819', THEME_DARK_RGB: '80, 72, 25', THEME_MEDIUM_DARK: '#6b612b',
+  THEME_MEDIUM: '#7e743e', THEME_LIGHT: '#91864d', BACKGROUND_COLOR: '#fffff0',
+}
+
+test('parsePaletteFile: the family templates name theirs; website-template has none', () => {
+  assert.equal(parsePaletteFile(GALLERY_CHECK_PLACEHOLDERS), 'src/styles/site.css')
+  assert.equal(parsePaletteFile(CHECK_PLACEHOLDERS_JS_VERBATIM), null)
+})
+
+test('buildReplacements: a family template\'s __SITE_NAME__ is the --title', () => {
+  const replacements = buildReplacements(GALLERY_CHECK_PLACEHOLDERS, { slug: 'carpets', class: 'gallery', namespace: 'carpets', title: 'Carpets' })
+  assert.deepEqual(replacements, { __DATASET__: 'carpets', __SITE_NAME__: 'Carpets', __SITE_NAMESPACE__: 'carpets' })
+})
+
+test('paletteReplacements: one value per placeholder of the template, by name', () => {
+  assert.deepEqual(paletteReplacements(GALLERY_PALETTE_CSS, CARPETS), {
+    __PALETTE_THEME_DARK__: '#504819', __PALETTE_THEME_DARK_RGB__: '80, 72, 25', __PALETTE_THEME_MEDIUM_DARK__: '#6b612b',
+    __PALETTE_THEME_MEDIUM__: '#7e743e', __PALETTE_THEME_LIGHT__: '#91864d', __PALETTE_BACKGROUND_COLOR__: '#fffff0',
+  })
+})
+
+test('paletteReplacements: refuses a palette that misses a colour, names an unknown one, or is not an object', () => {
+  const { THEME_LIGHT, ...missing } = CARPETS
+  void THEME_LIGHT
+  assert.throws(() => paletteReplacements(GALLERY_PALETTE_CSS, missing), /missing THEME_LIGHT/)
+  assert.throws(() => paletteReplacements(GALLERY_PALETTE_CSS, { ...CARPETS, THEME_DRAK: '#000' }), /unknown THEME_DRAK/)
+  assert.throws(() => paletteReplacements(GALLERY_PALETTE_CSS, { ...CARPETS, THEME_DARK: ' ' }), /missing THEME_DARK/)
+  assert.throws(() => paletteReplacements(GALLERY_PALETTE_CSS, ['#504819']), /must be a JSON object/)
+})
+
+// The gallery template's REAL guard, run against a scaffolded tree: with the palette
+// replaced it passes; with the palette left, it refuses — the install cannot go ahead
+// on another gallery's colours or on none.
+test('the real gallery guard: passes a scaffolded tree, refuses one whose palette is unset', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'new-website-gallery-'))
+  try {
+    const replacements = buildReplacements(GALLERY_CHECK_PLACEHOLDERS, { slug: 'zz-fixture', class: 'gallery', namespace: 'zzFixture', title: 'Fixture' })
+    const files = {
+      'package.json': JSON.stringify({ name: '__DATASET__', dependencies: { '@museumwnf/__DATASET__-data': '^1.0.0' } }),
+      'vite.config.js': "export default { dataPackage: '@museumwnf/__DATASET__-data' }",
+      'index.html': '<title>__SITE_NAME__</title>',
+      'src/dataset.config.js': "export default { datasetPackage: '@museumwnf/__DATASET__-data', siteName: '__SITE_NAME__' }",
+      'locales/en.json': '{ "__SITE_NAMESPACE__.credits.body": "..." }',
+      'tests/smoke.test.js': "const ns = '__SITE_NAMESPACE__'",
+    }
+    for (const [path, content] of Object.entries(files)) {
+      const full = join(dir, path)
+      mkdirSync(dirname(full), { recursive: true })
+      writeFileSync(full, applyReplacements(content, replacements))
+    }
+    mkdirSync(join(dir, 'scripts'), { recursive: true })
+    writeFileSync(join(dir, 'scripts', 'check-placeholders.js'), GALLERY_CHECK_PLACEHOLDERS)
+    const paletteFile = join(dir, parsePaletteFile(GALLERY_CHECK_PLACEHOLDERS))
+    mkdirSync(dirname(paletteFile), { recursive: true })
+    const guard = () => execFileSync('node', ['scripts/check-placeholders.js'], { cwd: dir, encoding: 'utf8', stdio: 'pipe' })
+
+    writeFileSync(paletteFile, GALLERY_PALETTE_CSS)
+    assert.throws(guard, /palette in src\/styles\/site\.css is not set/)
+
+    writeFileSync(paletteFile, applyReplacements(GALLERY_PALETTE_CSS, paletteReplacements(GALLERY_PALETTE_CSS, CARPETS)))
+    assert.doesNotThrow(guard)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

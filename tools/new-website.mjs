@@ -1,18 +1,25 @@
 #!/usr/bin/env node
 /**
- * Create and configure a new MWNF website repository from website-template.
+ * Create and configure a new MWNF website repository from its site template:
+ * a product from website-template, a gallery from gallery-template, an
+ * exhibition from exhibition-template (`--class` picks it; decision D5).
  *
- * This is the mechanical part of website-template's README, "Admin —
- * creating a new website" (steps 1, 3–5 and part of step 2/4): create the
- * repository from the template, switch on the settings every live site
- * carries (Pages, the ruleset, classic branch protection, auto-merge,
- * delete-branch-on-merge, CodeQL, Dependabot security updates and
- * vulnerability alerts), then scaffold the first branch (replace the
- * placeholders, install the dataset package, open the first PR).
+ * This is the mechanical part of the templates' READMEs, "Admin — creating a
+ * new website": create the repository from the template, switch on the
+ * settings every live site carries (Pages, the ruleset, classic branch
+ * protection, auto-merge, delete-branch-on-merge, CodeQL, Dependabot security
+ * updates and vulnerability alerts), then scaffold the first branch (replace
+ * the placeholders, the palette of a gallery or exhibition included, install
+ * the dataset package, open the first PR).
+ *
+ * The family templates can also be used by hand — "Use this template" on
+ * GitHub, then their own scripts/setup-repo.sh/.ps1 — so their settings are
+ * written twice: in canonicalRuleset()/canonicalProtection() below and in
+ * those scripts. A change to one is a change to the other.
  *
  * What this deliberately does NOT do — these stay by hand, or are scripted
  * elsewhere, because they are content decisions or depend on inventory-app:
- *   - filling in `dataset.config.js` / `theme/tokens.css` with the site's
+ *   - filling in a product's `dataset.config.js` / `theme/tokens.css` with its
  *     actual palette, facets and sheet fields (website-template README,
  *     step 6) — a content decision, not a mechanical one;
  *   - the texts PR (`scripts/site-i18n` extraction into `locales/`);
@@ -25,8 +32,9 @@
  * written in parallel with this tool).
  *
  * Usage:
- *   node tools/new-website.mjs --slug carpets --class gallery --namespace carpets --title "Carpets"
- *   node tools/new-website.mjs --slug carpets --class gallery --namespace carpets --title "Carpets" --dry-run
+ *   node tools/new-website.mjs --slug carpets --class gallery --namespace carpets --title "Carpets" --palette carpets.json
+ *   node tools/new-website.mjs --slug carpets --class gallery --namespace carpets --title "Carpets" --palette carpets.json --dry-run
+ *   node tools/new-website.mjs --slug islamicart --class standalone --namespace islamicart --title "Discover Islamic Art"
  *   node tools/new-website.mjs --settings-only --slug carpets
  *   node tools/new-website.mjs --settings-only --dry-run --slug carpets
  *
@@ -34,7 +42,15 @@
  *   --slug <slug>          REQUIRED. Kebab-case. Also the repository name
  *                          and the data package's `<slug>-data`.
  *   --class <kind>         gallery | exhibition | standalone. Required
- *                          unless --settings-only.
+ *                          unless --settings-only. Picks the template:
+ *                          gallery-template, exhibition-template or
+ *                          website-template.
+ *   --palette <file.json>  A gallery's or an exhibition's own colours,
+ *                          required for those two classes: one entry per
+ *                          `__PALETTE_<NAME>__` placeholder of the
+ *                          template's src/styles/site.css, keyed by <NAME>
+ *                          (`{ "THEME_DARK": "#504819", ... }`). Checked
+ *                          against the template before anything is created.
  *   --namespace <ns>       One lowercase word, no hyphens (carpets,
  *                          waterInIslam) — the name this website's own
  *                          viewer-i18n entries carry. Required unless
@@ -81,17 +97,20 @@ import { pathToFileURL } from 'node:url'
 
 import {
   SCOPE,
-  TEMPLATE_REPO,
   ensureGhAuth,
   gh,
   gitIdentityArgs,
   hasLocalGitIdentity,
+  isSiteTemplate,
   resolveGitIdentity,
   resolveOwner,
   run,
 } from './gh-lib.mjs'
 
-const CLASSES = ['gallery', 'exhibition', 'standalone']
+// The template each kind of website is created from (decision D5): a product
+// from the all-purpose scaffold, a DXA gallery or exhibition from its family's.
+const CLASS_TEMPLATES = { gallery: 'gallery-template', exhibition: 'exhibition-template', standalone: 'website-template' }
+const CLASSES = Object.keys(CLASS_TEMPLATES)
 const SLUG_RE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
 const NAMESPACE_RE = /^[a-z][a-zA-Z0-9]*$/
 const RULESET_NAME = 'main-requires-pr'
@@ -106,12 +125,20 @@ const CONTENT_BRANCH_PREFIX = 'chore/scaffold-'
 
 // ── Arguments ──────────────────────────────────────────────────────────────
 
+/** The template a website of class `cls` is created from. */
+export function templateFor(cls) {
+  const template = CLASS_TEMPLATES[cls]
+  if (!template) throw new Error(`No template for class "${cls}".`)
+  return template
+}
+
 export function parseArgs(argv) {
   const opts = {
     slug: null,
     class: null,
     namespace: null,
     title: null,
+    palette: null,
     owner: null,
     dryRun: false,
     settingsOnly: false,
@@ -123,6 +150,7 @@ export function parseArgs(argv) {
     else if (arg === '--class') opts.class = argv[++i]
     else if (arg === '--namespace') opts.namespace = argv[++i]
     else if (arg === '--title') opts.title = argv[++i]
+    else if (arg === '--palette') opts.palette = argv[++i]
     else if (arg === '--owner') opts.owner = argv[++i]
     else if (arg === '--dry-run') opts.dryRun = true
     else if (arg === '--settings-only') opts.settingsOnly = true
@@ -153,6 +181,17 @@ export function parseArgs(argv) {
 
   if (opts.class !== null && !CLASSES.includes(opts.class)) {
     throw new Error(`--class must be one of ${CLASSES.join(', ')}, got "${opts.class}".`)
+  }
+  // A gallery or an exhibition never ships another site's colours
+  // (inventory-app#2046/#2047): its template's palette is placeholders.
+  if (!opts.settingsOnly && opts.class !== 'standalone' && !opts.palette) {
+    throw new Error(
+      `--palette <file.json> is required for a ${opts.class}: its template's colours are placeholders ` +
+      '(see the template\'s src/styles/site.css for their names and where the legacy values are).'
+    )
+  }
+  if (opts.palette && opts.class === 'standalone') {
+    throw new Error('--palette is for a gallery or an exhibition; a product sets its colours in its own theme.')
   }
   if (opts.namespace !== null && !NAMESPACE_RE.test(opts.namespace)) {
     throw new Error(
@@ -230,18 +269,67 @@ function report(label, status) {
 
 // ── Preflights ─────────────────────────────────────────────────────────────
 
+/**
+ * The palette replacements for one scaffold: `{ __PALETTE_<NAME>__: value }`
+ * for every placeholder the template's palette file carries, from the
+ * `--palette` file's `{ <NAME>: value }`. Throws when the file misses one or
+ * names one the template does not have (a typo would otherwise leave a
+ * placeholder the install then refuses, after the repository exists).
+ */
+export function paletteReplacements(paletteCss, palette) {
+  const wanted = [...new Set(paletteCss.match(/__PALETTE_[A-Z_]+__/g) ?? [])].map((p) => p.slice('__PALETTE_'.length, -2))
+  if (!palette || typeof palette !== 'object' || Array.isArray(palette)) {
+    throw new Error('--palette must be a JSON object: { "<NAME>": "<colour>", ... }.')
+  }
+  const missing = wanted.filter((name) => typeof palette[name] !== 'string' || !palette[name].trim())
+  const unknown = Object.keys(palette).filter((name) => !wanted.includes(name))
+  if (missing.length || unknown.length) {
+    throw new Error(
+      '--palette does not match the template\'s palette ' +
+      `(${wanted.join(', ') || 'none'}): ` +
+      [missing.length ? `missing ${missing.join(', ')}` : '', unknown.length ? `unknown ${unknown.join(', ')}` : '']
+        .filter(Boolean).join('; ') + '.'
+    )
+  }
+  return Object.fromEntries(wanted.map((name) => [`__PALETTE_${name}__`, palette[name].trim()]))
+}
+
+/** The palette file a template's check-placeholders.js names (`PALETTE_FILE`), or
+ * `null` for a template with no palette placeholders (website-template). */
+export function parsePaletteFile(source) {
+  return source.match(/PALETTE_FILE\s*=\s*['"]([^'"]+)['"]/)?.[1] ?? null
+}
+
+/** A file of `repo` on its default branch, as text — the raw media type, never the
+ * base64 `content` field, which is not safe for text. */
+function templateFile(repo, path, dryRun) {
+  return ghApi(['-H', 'Accept: application/vnd.github.raw', `repos/${repo}/contents/${path}`], { dryRun })
+}
+
 export function preflight(opts, owner) {
   console.log('Preflights')
 
   ensureGhAuth()
   report('[gh auth]', 'authenticated')
 
-  const templateFullName = `${owner}/${TEMPLATE_REPO}`
-  const template = ghApiJson([`repos/${templateFullName}`, '--jq', '{full_name}'], { dryRun: opts.dryRun })
-  if (!template) {
-    throw new Error(`${templateFullName} does not exist or is not reachable — cannot create from a missing template.`)
+  // `--settings-only` names no class: the repository's own template link is
+  // what ensureRepository() checks then.
+  if (opts.class) {
+    const templateFullName = `${owner}/${templateFor(opts.class)}`
+    const template = ghApiJson([`repos/${templateFullName}`, '--jq', '{full_name}'], { dryRun: opts.dryRun })
+    if (!template) {
+      throw new Error(`${templateFullName} does not exist or is not reachable — cannot create from a missing template.`)
+    }
+    report('[Template]', `${templateFullName} exists`)
+
+    if (!opts.settingsOnly && opts.paletteValues) {
+      const guard = templateFile(templateFullName, 'scripts/check-placeholders.js', opts.dryRun)
+      const paletteFile = parsePaletteFile(guard)
+      if (!paletteFile) throw new Error(`${templateFullName} has no palette placeholders, but --palette was given.`)
+      opts.paletteReplacements = paletteReplacements(templateFile(templateFullName, paletteFile, opts.dryRun), opts.paletteValues)
+      report('[Palette]', `${Object.keys(opts.paletteReplacements).length} colours for ${paletteFile}`)
+    }
   }
-  report('[Template]', `${templateFullName} exists`)
 
   if (!opts.settingsOnly) {
     const pkg = `${SCOPE}/${opts.slug}-data`
@@ -274,16 +362,21 @@ export function ensureRepository(opts, owner) {
     dryRun: opts.dryRun,
   })
 
+  // The template this repository must come from: its class's, or — for
+  // `--settings-only`, which names no class — any of the site templates.
+  const expected = opts.class ? `${owner}/${templateFor(opts.class)}` : null
+  const fromTemplate = (link) => (expected ? link === expected : isSiteTemplate(owner, link))
+
   if (repoExists(existing)) {
-    if (existing.template_repository !== `${owner}/${TEMPLATE_REPO}`) {
+    if (!fromTemplate(existing.template_repository)) {
       throw new Error(
-        `${fullName} already exists but was not created from ${owner}/${TEMPLATE_REPO} ` +
+        `${fullName} already exists but was not created from ${expected ?? 'a site template'} ` +
         `(template_repository is "${existing.template_repository || 'none'}"). ` +
         'Refusing to configure a repository this tool did not create from the template — ' +
         'propagate.mjs and package-ci.yml discovery both rely on that link.'
       )
     }
-    report('[Repository]', 'already exists, created from the template')
+    report('[Repository]', `already exists, created from ${existing.template_repository}`)
     return { fullName, created: false }
   }
 
@@ -292,27 +385,27 @@ export function ensureRepository(opts, owner) {
   }
 
   if (opts.dryRun) {
-    report('[Repository]', `would create ${fullName} from ${owner}/${TEMPLATE_REPO} (public)`)
+    report('[Repository]', `would create ${fullName} from ${expected} (public)`)
     return { fullName, created: false, wouldCreate: true }
   }
 
   gh([
     'repo', 'create', fullName,
-    '--template', `${owner}/${TEMPLATE_REPO}`,
+    '--template', expected,
     '--public',
     '--description', `${opts.title} — a Museum With No Frontiers website`,
   ])
 
   const created = ghApiJson([`repos/${fullName}`, '--jq', '{full_name,template_repository:.template_repository.full_name}'], {})
-  if (!created || created.template_repository !== `${owner}/${TEMPLATE_REPO}`) {
+  if (!created || created.template_repository !== expected) {
     throw new Error(
-      `${fullName} was created but does not carry template_repository = "${owner}/${TEMPLATE_REPO}" ` +
+      `${fullName} was created but does not carry template_repository = "${expected}" ` +
       `(got "${created?.template_repository || 'none'}"). ` +
       'propagate.mjs and package-ci.yml discover websites from this link; without it, this site ' +
       'is invisible to both.'
     )
   }
-  report('[Repository]', `created from ${owner}/${TEMPLATE_REPO}`)
+  report('[Repository]', `created from ${expected}`)
   return { fullName, created: true }
 }
 
@@ -667,14 +760,15 @@ export function parseTextPlaceholders(source) {
  * template's own check-placeholders.js source and this tool's CLI options.
  *
  * Throws if check-placeholders.js declares a text placeholder this tool does not know how
- * to fill (only `__SITE_CLASS__`/`__SITE_NAMESPACE__` are known) — a template that grows a
- * new placeholder must fail this tool loudly rather than scaffold a site that still
- * carries it, silently reproducing the exact bug the preinstall guard exists to catch.
+ * to fill (`__SITE_CLASS__`, `__SITE_NAMESPACE__` and `__SITE_NAME__` are known) — a
+ * template that grows a new placeholder must fail this tool loudly rather than scaffold a
+ * site that still carries it, silently reproducing the exact bug the preinstall guard
+ * exists to catch.
  */
 export function buildReplacements(source, opts) {
   const namePlaceholder = parseNamePlaceholder(source)
   const textPlaceholders = parseTextPlaceholders(source)
-  const known = { __SITE_CLASS__: opts.class, __SITE_NAMESPACE__: opts.namespace }
+  const known = { __SITE_CLASS__: opts.class, __SITE_NAMESPACE__: opts.namespace, __SITE_NAME__: opts.title }
 
   const unknown = textPlaceholders.filter((p) => !(p in known))
   if (unknown.length) {
@@ -741,6 +835,15 @@ function scaffoldContent(fullName, opts, identityArgs) {
     }
     report('[Placeholders]', `replaced in ${changedFiles} of ${files.length} configured files`)
 
+    // A gallery's or an exhibition's colours, checked against the template in
+    // preflight().
+    const paletteFile = parsePaletteFile(checkPlaceholdersSource)
+    if (paletteFile && opts.paletteReplacements) {
+      const path = join(work, paletteFile)
+      writeFileSync(path, applyReplacements(readFileSync(path, 'utf8'), opts.paletteReplacements))
+      report('[Palette]', `set in ${paletteFile}`)
+    }
+
     // Also runs check-placeholders.js as `preinstall` — the intended safety net: a
     // placeholder this tool missed fails the install right here, not silently in CI.
     run('npm', ['install', `${SCOPE}/${opts.slug}-data@latest`], { cwd: work, stdio: 'pipe' })
@@ -750,8 +853,8 @@ function scaffoldContent(fullName, opts, identityArgs) {
     const messageFile = join(tmpdir(), `new-website-message-${process.pid}`)
     writeFileSync(
       messageFile,
-      `chore: scaffold ${opts.slug} from website-template\n\n` +
-      `Replaces the __DATASET__/__SITE_CLASS__/__SITE_NAMESPACE__ placeholders and installs\n` +
+      `chore: scaffold ${opts.slug} from ${templateFor(opts.class)}\n\n` +
+      `Replaces the template's placeholders${opts.paletteReplacements ? ', the palette included,' : ''} and installs\n` +
       `${SCOPE}/${opts.slug}-data@latest.\n\n` +
       'Opened by tools/new-website.mjs in museumwithnofrontiers/viewer-workflows.\n'
     )
@@ -781,13 +884,15 @@ function scaffoldContent(fullName, opts, identityArgs) {
 // rulesetNeedsChange, canonicalProtection, protectionNeedsChange,
 // repoFlagsNeedChange, pagesNeedsChange, securityFixesNeedChange,
 // codeScanningNeedsChange, parseConfiguredFiles, parseNamePlaceholder,
-// parseTextPlaceholders, buildReplacements, applyReplacements) without
+// parseTextPlaceholders, buildReplacements, applyReplacements, templateFor,
+// paletteReplacements, parsePaletteFile) without
 // running the CLI — which talks to `gh`, `npm` and the registry from its
 // very first line.
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
 if (isMain) {
   const opts = parseArgs(process.argv.slice(2))
   const owner = resolveOwner(opts.owner)
+  if (opts.palette) opts.paletteValues = JSON.parse(readFileSync(opts.palette, 'utf8'))
 
   console.log(`Target: ${owner}/${opts.slug}${opts.dryRun ? ' (dry run)' : ''}`)
 
