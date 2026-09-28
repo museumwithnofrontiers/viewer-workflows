@@ -1,0 +1,65 @@
+name: Deploy after a text-only merge
+
+# locale-validate.yml merges a green text-only pull request itself, with the
+# workflow token. GitHub starts no workflow for a push made with that token,
+# so the merge never reaches the website's Deploy: the texts land on `main`
+# and stay unpublished until the next ordinary merge. workflow_dispatch is the
+# one event that token may start, so this job waits for that merge and then
+# starts the caller's deploy workflow by hand.
+#
+# It is a job of its own, never part of `locales / Validate locale files`:
+# that check is required, so waiting for the merge inside it would wait for
+# itself. The caller runs it after the `locales` job, only for a text-only pull
+# request, grants it `actions: write`, and gives its deploy workflow a
+# `workflow_dispatch` trigger. A website that does not call it keeps working as
+# before.
+
+on:
+  workflow_call:
+    inputs:
+      deploy_workflow:
+        description: "The caller's deploy workflow file, started once the pull request is merged"
+        type: string
+        required: false
+        default: deploy.yml
+      timeout_minutes:
+        description: "How long to wait for the merge before giving up"
+        type: number
+        required: false
+        default: 40
+
+permissions:
+  actions: write
+  pull-requests: read
+
+jobs:
+  deploy:
+    name: Deploy after the merge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for the merge, then start the deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+          WORKFLOW: ${{ inputs.deploy_workflow }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+        run: |
+          deadline=$(( $(date +%s) + TIMEOUT_MINUTES * 60 ))
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            state="$(gh pr view "$PR_NUMBER" -R "$REPO" --json state --jq .state)"
+            case "$state" in
+              MERGED)
+                gh workflow run "$WORKFLOW" -R "$REPO" --ref "$BRANCH"
+                echo "Merged: started $WORKFLOW on $BRANCH."
+                exit 0
+                ;;
+              CLOSED)
+                echo "Closed without merging: nothing to deploy."
+                exit 0
+                ;;
+            esac
+            sleep 20
+          done
+          echo "::warning::Not merged within ${TIMEOUT_MINUTES} minutes: no deploy started. The next merge on $BRANCH deploys these texts."

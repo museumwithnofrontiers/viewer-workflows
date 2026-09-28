@@ -7,6 +7,7 @@ Reusable GitHub Actions workflows for the MWNF Website Platform. Reference them 
 | `website-ci.yml` | website repos | PR checks: build + test + texts (blocking), ESLint + npm audit (reported only) | — | npm scripts `build`, `test`, `lint`; `@museumwnf/viewer-i18n` installed |
 | `website-deploy-pages.yml` | website repos | Build with `BASE_PATH` and deploy `dist/` to GitHub Pages; preflights that Pages is enabled with source "GitHub Actions" and fails with a readable message instead of a 404 stack trace if not | `base_path` (optional, default `/<repo-name>/`) | Pages source set to "GitHub Actions" |
 | `locale-validate.yml` | website repos, `viewer-i18n` | Validate the repository's texts with the rules published by [`museumwithnofrontiers/viewer-i18n`](https://github.com/museumwithnofrontiers/viewer-i18n); auto-merge text-only PRs when green; plain-language PR comment on failure | `mode` (`site` \| `dictionary`, default `site`), `texts_path` (default `locales/`), `dictionary_ref` (default `main`) — output: `locales_only` | "Allow auto-merge" enabled |
+| `website-text-deploy.yml` | website repos | Start the site's deploy once `locale-validate.yml` has merged a text-only PR. That merge is made with the workflow token, and GitHub starts no workflow for a push made with it, so without this the texts reach `main` but not the site | `deploy_workflow` (default `deploy.yml`), `timeout_minutes` (default `40`) | The caller grants `actions: write`; its deploy workflow has a `workflow_dispatch` trigger
 | `dependabot-automerge.yml` | all repos | Auto-merge Dependabot minor/patch bumps of the reusable workflows and dev-dependency patches; majors wait for a human. The `@museumwnf` platform packages are not covered — their rollout is propagated by the operator instead; see [MAINTENANCE.md](MAINTENANCE.md) | — | "Allow auto-merge" enabled |
 | `audit-scheduled.yml` | all repos | Scheduled `npm audit`; opens or updates the issue "npm audit findings"; skips with a notice instead of failing when the repo has no lockfile yet (before its first pull request) | — | — |
 | `package-ci.yml` | package repos | PR checks: unit tests, `npm pack`, downstream build matrix over every website, using the PR's tarball. If the PR renames `package.json`'s `name`, the tarball is additionally alias-installed under the pre-rename name in every downstream build, so sites still importing the old name are actually tested against this PR's code instead of silently passing against the last published version | — | — (websites are discovered from their link to one of the three site templates) |
@@ -100,6 +101,13 @@ jobs:
     uses: museumwithnofrontiers/viewer-workflows/.github/workflows/website-ci.yml@vX.Y.Z
   locales:
     uses: museumwithnofrontiers/viewer-workflows/.github/workflows/locale-validate.yml@vX.Y.Z
+  deploy-texts:
+    needs: locales
+    if: needs.locales.outputs.locales_only == 'true'
+    permissions:
+      actions: write
+      pull-requests: read
+    uses: museumwithnofrontiers/viewer-workflows/.github/workflows/website-text-deploy.yml@vX.Y.Z
 ```
 
 ### `.github/workflows/deploy.yml` (website repos)
@@ -109,6 +117,8 @@ name: Deploy
 on:
   push:
     branches: [main]
+  # Started by website-text-deploy.yml after a text-only merge; see ci.yml.
+  workflow_dispatch:
 permissions:
   contents: read
   pages: write
