@@ -48,7 +48,7 @@
  *   --palette <file.json>  A gallery's or an exhibition's own colours,
  *                          required for those two classes: one entry per
  *                          `__PALETTE_<NAME>__` placeholder of the
- *                          template's src/styles/site.css, keyed by <NAME>
+ *                          template's theme/tokens.css, keyed by <NAME>
  *                          (`{ "THEME_DARK": "#504819", ... }`). Checked
  *                          against the template before anything is created.
  *   --namespace <ns>       One lowercase word, no hyphens (carpets,
@@ -187,7 +187,7 @@ export function parseArgs(argv) {
   if (!opts.settingsOnly && opts.class !== 'standalone' && !opts.palette) {
     throw new Error(
       `--palette <file.json> is required for a ${opts.class}: its template's colours are placeholders ` +
-      '(see the template\'s src/styles/site.css for their names and where the legacy values are).'
+      '(see the template\'s theme/tokens.css for their names and where the legacy values are).'
     )
   }
   if (opts.palette && opts.class === 'standalone') {
