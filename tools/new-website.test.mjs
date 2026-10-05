@@ -475,7 +475,6 @@ const GALLERY_CHECK_PLACEHOLDERS = readFileSync(
 
 const GALLERY_PALETTE_CSS = `:root {
   --theme-dark:        __PALETTE_THEME_DARK__;
-  --theme-dark-rgb:    __PALETTE_THEME_DARK_RGB__;
   --theme-medium-dark: __PALETTE_THEME_MEDIUM_DARK__;
   --theme-medium:      __PALETTE_THEME_MEDIUM__;
   --theme-light:       __PALETTE_THEME_LIGHT__;
@@ -484,12 +483,12 @@ const GALLERY_PALETTE_CSS = `:root {
 `
 
 const CARPETS = {
-  THEME_DARK: '#504819', THEME_DARK_RGB: '80, 72, 25', THEME_MEDIUM_DARK: '#6b612b',
+  THEME_DARK: '#504819', THEME_MEDIUM_DARK: '#6b612b',
   THEME_MEDIUM: '#7e743e', THEME_LIGHT: '#91864d', BACKGROUND_COLOR: '#fffff0',
 }
 
 test('parsePaletteFile: the family templates name theirs; website-template has none', () => {
-  assert.equal(parsePaletteFile(GALLERY_CHECK_PLACEHOLDERS), 'src/styles/site.css')
+  assert.equal(parsePaletteFile(GALLERY_CHECK_PLACEHOLDERS), 'theme/tokens.css')
   assert.equal(parsePaletteFile(CHECK_PLACEHOLDERS_JS_VERBATIM), null)
 })
 
@@ -500,7 +499,7 @@ test('buildReplacements: a family template\'s __SITE_NAME__ is the --title', () 
 
 test('paletteReplacements: one value per placeholder of the template, by name', () => {
   assert.deepEqual(paletteReplacements(GALLERY_PALETTE_CSS, CARPETS), {
-    __PALETTE_THEME_DARK__: '#504819', __PALETTE_THEME_DARK_RGB__: '80, 72, 25', __PALETTE_THEME_MEDIUM_DARK__: '#6b612b',
+    __PALETTE_THEME_DARK__: '#504819', __PALETTE_THEME_MEDIUM_DARK__: '#6b612b',
     __PALETTE_THEME_MEDIUM__: '#7e743e', __PALETTE_THEME_LIGHT__: '#91864d', __PALETTE_BACKGROUND_COLOR__: '#fffff0',
   })
 })
@@ -541,7 +540,7 @@ test('the real gallery guard: passes a scaffolded tree, refuses one whose palett
     const guard = () => execFileSync('node', ['scripts/check-placeholders.js'], { cwd: dir, encoding: 'utf8', stdio: 'pipe' })
 
     writeFileSync(paletteFile, GALLERY_PALETTE_CSS)
-    assert.throws(guard, /palette in src\/styles\/site\.css is not set/)
+    assert.throws(guard, /palette in theme\/tokens\.css is not set/)
 
     writeFileSync(paletteFile, applyReplacements(GALLERY_PALETTE_CSS, paletteReplacements(GALLERY_PALETTE_CSS, CARPETS)))
     assert.doesNotThrow(guard)

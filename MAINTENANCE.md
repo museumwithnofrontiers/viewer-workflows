@@ -161,11 +161,11 @@ placeholders, install `@museumwnf/<slug>-data@latest`, open the first PR).
 A gallery or an exhibition also needs its own colours: the family templates'
 palettes are placeholders their install guard refuses (inventory-app#2046,
 #2047), so `--palette <file.json>` is required for those two classes. One entry
-per `__PALETTE_<NAME>__` placeholder of the template's `src/styles/site.css`
+per `__PALETTE_<NAME>__` placeholder of the template's `theme/tokens.css`
 (the comment above them says where the legacy values are), keyed by `<NAME>`:
 
 ```json
-{ "THEME_DARK": "#504819", "THEME_DARK_RGB": "80, 72, 25", "THEME_MEDIUM_DARK": "#6b612b",
+{ "THEME_DARK": "#504819", "THEME_MEDIUM_DARK": "#6b612b",
   "THEME_MEDIUM": "#7e743e", "THEME_LIGHT": "#91864d", "BACKGROUND_COLOR": "#fffff0" }
 ```
 
