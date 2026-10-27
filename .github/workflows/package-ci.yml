@@ -91,8 +91,9 @@ jobs:
     steps:
       # A website is, by definition, a repository created from one of the
       # estate owner's site templates — website-template for a product,
-      # gallery-template and exhibition-template for the DXA families (the
-      # same list as tools/gh-lib.mjs's SITE_TEMPLATES) — the owner resolved
+      # gallery-template and exhibition-template for the DXA families,
+      # minisite-template for legacy's virtual exhibitions (the same list as
+      # tools/gh-lib.mjs's SITE_TEMPLATES) — the owner resolved
       # below via github.repository_owner, never hardcoded, since it has
       # already moved once. GitHub records the link permanently as
       # `template_repository`. Deriving the list from it means a new site is a
@@ -124,7 +125,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           OWNER: ${{ github.repository_owner }}
-          TEMPLATES: website-template gallery-template exhibition-template
+          TEMPLATES: website-template gallery-template exhibition-template minisite-template
         run: |
           set -euo pipefail
           repos="$(gh api "users/$OWNER/repos?per_page=100&type=owner" \
