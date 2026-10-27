@@ -2,7 +2,8 @@
 /**
  * Create and configure a new MWNF website repository from its site template:
  * a product from website-template, a gallery from gallery-template, an
- * exhibition from exhibition-template (`--class` picks it; decision D5).
+ * exhibition from exhibition-template (`--class` picks it; decision D5), and
+ * a mini-site, one of legacy's virtual exhibitions, from minisite-template.
  *
  * This is the mechanical part of the templates' READMEs, "Admin — creating a
  * new website": create the repository from the template, switch on the
@@ -41,10 +42,15 @@
  * Options:
  *   --slug <slug>          REQUIRED. Kebab-case. Also the repository name
  *                          and the data package's `<slug>-data`.
- *   --class <kind>         gallery | exhibition | standalone. Required
- *                          unless --settings-only. Picks the template:
- *                          gallery-template, exhibition-template or
- *                          website-template.
+ *   --class <kind>         gallery | exhibition | standalone | minisite.
+ *                          Required unless --settings-only. Picks the
+ *                          template: gallery-template, exhibition-template,
+ *                          website-template or minisite-template. A
+ *                          mini-site's own values (src/minisite.json, its
+ *                          theme and pictures) are written onto the first
+ *                          branch by inventory-app's
+ *                          scripts/minisites/legacy-minisite.mjs, so it is
+ *                          created with --no-merge.
  *   --palette <file.json>  A gallery's or an exhibition's own colours,
  *                          required for those two classes: one entry per
  *                          `__PALETTE_<NAME>__` placeholder of the
@@ -108,9 +114,17 @@ import {
 } from './gh-lib.mjs'
 
 // The template each kind of website is created from (decision D5): a product
-// from the all-purpose scaffold, a DXA gallery or exhibition from its family's.
-const CLASS_TEMPLATES = { gallery: 'gallery-template', exhibition: 'exhibition-template', standalone: 'website-template' }
+// from the all-purpose scaffold, a DXA gallery or exhibition from its family's,
+// a mini-site from the mini-sites'.
+const CLASS_TEMPLATES = {
+  gallery: 'gallery-template',
+  exhibition: 'exhibition-template',
+  standalone: 'website-template',
+  minisite: 'minisite-template',
+}
 const CLASSES = Object.keys(CLASS_TEMPLATES)
+// The classes whose template's colours are placeholders, set from --palette.
+const PALETTE_CLASSES = ['gallery', 'exhibition']
 const SLUG_RE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
 const NAMESPACE_RE = /^[a-z][a-zA-Z0-9]*$/
 const RULESET_NAME = 'main-requires-pr'
@@ -169,7 +183,7 @@ export function parseArgs(argv) {
 
   if (!opts.settingsOnly) {
     if (!opts.class) {
-      throw new Error('--class gallery|exhibition|standalone is required, unless --settings-only.')
+      throw new Error(`--class ${CLASSES.join('|')} is required, unless --settings-only.`)
     }
     if (!opts.namespace) {
       throw new Error('--namespace <ns> is required, unless --settings-only.')
@@ -184,14 +198,17 @@ export function parseArgs(argv) {
   }
   // A gallery or an exhibition never ships another site's colours
   // (inventory-app#2046/#2047): its template's palette is placeholders.
-  if (!opts.settingsOnly && opts.class !== 'standalone' && !opts.palette) {
+  if (!opts.settingsOnly && PALETTE_CLASSES.includes(opts.class) && !opts.palette) {
     throw new Error(
       `--palette <file.json> is required for a ${opts.class}: its template's colours are placeholders ` +
       '(see the template\'s theme/tokens.css for their names and where the legacy values are).'
     )
   }
-  if (opts.palette && opts.class === 'standalone') {
-    throw new Error('--palette is for a gallery or an exhibition; a product sets its colours in its own theme.')
+  if (opts.palette && !PALETTE_CLASSES.includes(opts.class)) {
+    throw new Error(
+      '--palette is for a gallery or an exhibition; a product sets its colours in its own theme, and a ' +
+      'mini-site takes its legacy theme from scripts/minisites/legacy-minisite.mjs.'
+    )
   }
   if (opts.namespace !== null && !NAMESPACE_RE.test(opts.namespace)) {
     throw new Error(

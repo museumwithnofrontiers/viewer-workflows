@@ -94,10 +94,10 @@ test('parseArgs: slug must be kebab-case', () => {
   assert.equal(parseArgs(['--settings-only', '--slug', 'the-use-of-colours-in-art']).slug, 'the-use-of-colours-in-art')
 })
 
-test('parseArgs: class must be one of gallery/exhibition/standalone', () => {
+test('parseArgs: class must be one of gallery/exhibition/standalone/minisite', () => {
   assert.throws(
     () => parseArgs(['--slug', 'x', '--class', 'museum', '--namespace', 'x', '--title', 'X']),
-    /--class must be one of gallery, exhibition, standalone/
+    /--class must be one of gallery, exhibition, standalone, minisite/
   )
 })
 
@@ -116,18 +116,20 @@ test('parseArgs: namespace is one lowercase word, no hyphens — camelCase allow
   )
 })
 
-test('parseArgs: a gallery or an exhibition needs its --palette; a product takes none', () => {
+test('parseArgs: a gallery or an exhibition needs its --palette; a product or a mini-site takes none', () => {
   for (const cls of ['gallery', 'exhibition']) {
     assert.throws(
       () => parseArgs(['--slug', 'x', '--class', cls, '--namespace', 'x', '--title', 'X']),
       /--palette <file.json> is required/
     )
   }
-  assert.equal(parseArgs(['--slug', 'x', '--class', 'standalone', '--namespace', 'x', '--title', 'X']).palette, null)
-  assert.throws(
-    () => parseArgs(['--slug', 'x', '--class', 'standalone', '--namespace', 'x', '--title', 'X', '--palette', 'p.json']),
-    /--palette is for a gallery or an exhibition/
-  )
+  for (const cls of ['standalone', 'minisite']) {
+    assert.equal(parseArgs(['--slug', 'x', '--class', cls, '--namespace', 'x', '--title', 'X']).palette, null)
+    assert.throws(
+      () => parseArgs(['--slug', 'x', '--class', cls, '--namespace', 'x', '--title', 'X', '--palette', 'p.json']),
+      /--palette is for a gallery or an exhibition/
+    )
+  }
   // --settings-only touches no content, so no palette.
   assert.equal(parseArgs(['--settings-only', '--slug', 'carpets']).palette, null)
 })
@@ -136,6 +138,7 @@ test('templateFor: each class its own template (decision D5)', () => {
   assert.equal(templateFor('standalone'), 'website-template')
   assert.equal(templateFor('gallery'), 'gallery-template')
   assert.equal(templateFor('exhibition'), 'exhibition-template')
+  assert.equal(templateFor('minisite'), 'minisite-template')
   assert.throws(() => templateFor('museum'), /No template for class/)
 })
 

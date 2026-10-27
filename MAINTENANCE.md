@@ -130,10 +130,11 @@ gh pr create --fill && gh pr merge --auto --squash
 Use `npm install …@latest`, not `npm update`: update only moves within the
 declared range, so it does nothing when a release falls outside it.
 
-### After the sites: the three templates
+### After the sites: the four templates
 
 Propagation reaches every website, but not the templates they are created
-from: `website-template`, `gallery-template` and `exhibition-template` carry
+from: `website-template`, `gallery-template`, `exhibition-template` and
+`minisite-template` carry
 no lockfile, so discovery skips them. A release a site had to adopt — a new
 major, a range the sites moved to, a file every site changed, a pinned
 viewer-workflows version — is therefore followed, the same day, by the same
@@ -142,7 +143,9 @@ A template that lags hands its next site an old platform.
 
 Verify a template by instantiating it: replace its placeholders with its
 reference site's own values (carpets for `gallery-template`, water-in-islam
-for `exhibition-template`, any dataset for `website-template`), install, and
+for `exhibition-template`, The Umayyads for `minisite-template` with
+inventory-app's `scripts/minisites/legacy-minisite.mjs --site`, any dataset
+for `website-template`), install, and
 run the checks. The family templates' smoke tests keep a few curatorial picks
 as `TODO(dataset)` on purpose; those tests fail the same way before and after,
 and nothing else may.
@@ -151,7 +154,8 @@ and nothing else may.
 `tools/new-website.mjs` scripts the mechanical part of the templates' READMEs,
 "Admin — creating a new website": create the repository from the template of
 its `--class` (`website-template` for a product, `gallery-template` or
-`exhibition-template` for the DXA families — decision D5), switch on the
+`exhibition-template` for the DXA families — decision D5 —, `minisite-template`
+for legacy's virtual exhibitions), switch on the
 settings every live site carries (Pages, the `main-requires-pr` ruleset,
 classic branch protection with the four required checks, allow-auto-merge,
 delete-branch-on-merge, CodeQL default setup, Dependabot security updates and
@@ -206,8 +210,9 @@ pointer, and the discovery dry-run) — see inventory-app's
 ## Which websites are consumers
 
 Derived, never listed. A website is a repository created from one of the
-three site templates — `website-template` for a product, `gallery-template`
-and `exhibition-template` for the DXA families — and GitHub records that
+four site templates — `website-template` for a product, `gallery-template`
+and `exhibition-template` for the DXA families, `minisite-template` for
+legacy's virtual exhibitions — and GitHub records that
 permanently as `template_repository`. Both `package-ci.yml`'s downstream
 matrix and `tools/propagate.mjs` read it (the list is `SITE_TEMPLATES` in
 `tools/gh-lib.mjs`, repeated in the workflow), so the set of sites validated
