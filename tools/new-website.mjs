@@ -2,8 +2,10 @@
 /**
  * Create and configure a new MWNF website repository from its site template:
  * a product from website-template, a gallery from gallery-template, an
- * exhibition from exhibition-template (`--class` picks it; decision D5), and
- * a mini-site, one of legacy's virtual exhibitions, from minisite-template.
+ * exhibition from exhibition-template (`--class` picks it; decision D5), a
+ * mini-site, one of legacy's virtual exhibitions, from minisite-template, and
+ * a Sharing History mini-site, a family of its own, from
+ * sharinghistory-minisite-template.
  *
  * This is the mechanical part of the templates' READMEs, "Admin — creating a
  * new website": create the repository from the template, switch on the
@@ -42,15 +44,17 @@
  * Options:
  *   --slug <slug>          REQUIRED. Kebab-case. Also the repository name
  *                          and the data package's `<slug>-data`.
- *   --class <kind>         gallery | exhibition | standalone | minisite.
- *                          Required unless --settings-only. Picks the
- *                          template: gallery-template, exhibition-template,
- *                          website-template or minisite-template. A
- *                          mini-site's own values (src/minisite.json, its
- *                          theme and pictures) are written onto the first
- *                          branch by inventory-app's
- *                          scripts/minisites/legacy-minisite.mjs, so it is
- *                          created with --no-merge.
+ *   --class <kind>         gallery | exhibition | standalone | minisite |
+ *                          sharinghistory-minisite. Required unless
+ *                          --settings-only. Picks the template:
+ *                          gallery-template, exhibition-template,
+ *                          website-template, minisite-template or
+ *                          sharinghistory-minisite-template. A mini-site's
+ *                          own values (src/minisite.json, its theme and
+ *                          pictures) are written onto the first branch by
+ *                          inventory-app's scripts/minisites/legacy-minisite.mjs
+ *                          (sharinghistory-minisite.mjs for Sharing History's),
+ *                          so it is created with --no-merge.
  *   --palette <file.json>  A gallery's or an exhibition's own colours,
  *                          required for those two classes: one entry per
  *                          `__PALETTE_<NAME>__` placeholder of the
@@ -115,12 +119,14 @@ import {
 
 // The template each kind of website is created from (decision D5): a product
 // from the all-purpose scaffold, a DXA gallery or exhibition from its family's,
-// a mini-site from the mini-sites'.
+// a mini-site from the mini-sites', a Sharing History mini-site from its
+// family's (its pages are not the other mini-sites').
 const CLASS_TEMPLATES = {
   gallery: 'gallery-template',
   exhibition: 'exhibition-template',
   standalone: 'website-template',
   minisite: 'minisite-template',
+  'sharinghistory-minisite': 'sharinghistory-minisite-template',
 }
 const CLASSES = Object.keys(CLASS_TEMPLATES)
 // The classes whose template's colours are placeholders, set from --palette.
@@ -207,7 +213,8 @@ export function parseArgs(argv) {
   if (opts.palette && !PALETTE_CLASSES.includes(opts.class)) {
     throw new Error(
       '--palette is for a gallery or an exhibition; a product sets its colours in its own theme, and a ' +
-      'mini-site takes its legacy theme from scripts/minisites/legacy-minisite.mjs.'
+      'mini-site takes its legacy theme from scripts/minisites/legacy-minisite.mjs (sharinghistory-minisite.mjs ' +
+      'for Sharing History\'s).'
     )
   }
   if (opts.namespace !== null && !NAMESPACE_RE.test(opts.namespace)) {

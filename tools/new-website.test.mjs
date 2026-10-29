@@ -94,10 +94,10 @@ test('parseArgs: slug must be kebab-case', () => {
   assert.equal(parseArgs(['--settings-only', '--slug', 'the-use-of-colours-in-art']).slug, 'the-use-of-colours-in-art')
 })
 
-test('parseArgs: class must be one of gallery/exhibition/standalone/minisite', () => {
+test('parseArgs: class must be one of gallery/exhibition/standalone/minisite/sharinghistory-minisite', () => {
   assert.throws(
     () => parseArgs(['--slug', 'x', '--class', 'museum', '--namespace', 'x', '--title', 'X']),
-    /--class must be one of gallery, exhibition, standalone, minisite/
+    /--class must be one of gallery, exhibition, standalone, minisite, sharinghistory-minisite/
   )
 })
 
@@ -123,7 +123,7 @@ test('parseArgs: a gallery or an exhibition needs its --palette; a product or a 
       /--palette <file.json> is required/
     )
   }
-  for (const cls of ['standalone', 'minisite']) {
+  for (const cls of ['standalone', 'minisite', 'sharinghistory-minisite']) {
     assert.equal(parseArgs(['--slug', 'x', '--class', cls, '--namespace', 'x', '--title', 'X']).palette, null)
     assert.throws(
       () => parseArgs(['--slug', 'x', '--class', cls, '--namespace', 'x', '--title', 'X', '--palette', 'p.json']),
@@ -139,6 +139,7 @@ test('templateFor: each class its own template (decision D5)', () => {
   assert.equal(templateFor('gallery'), 'gallery-template')
   assert.equal(templateFor('exhibition'), 'exhibition-template')
   assert.equal(templateFor('minisite'), 'minisite-template')
+  assert.equal(templateFor('sharinghistory-minisite'), 'sharinghistory-minisite-template')
   assert.throws(() => templateFor('museum'), /No template for class/)
 })
 
