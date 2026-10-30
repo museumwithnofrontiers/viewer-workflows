@@ -257,22 +257,24 @@ test('buildSiteList: zero matches throws instead of returning an empty list — 
 test('buildSiteList: the zero-match error names what it searched for and how to fix it', () => {
   assert.throws(
     () => buildSiteList('metanull', [], () => ''),
-    /"metanull\/website-template", "metanull\/gallery-template", "metanull\/exhibition-template", "metanull\/minisite-template", "metanull\/sharinghistory-minisite-template".*--owner.*--repo/s
+    /"metanull\/website-template", "metanull\/gallery-template", "metanull\/exhibition-template", "metanull\/minisite-template", "metanull\/baroqueart-minisite-template", "metanull\/sharinghistory-minisite-template".*--owner.*--repo/s
   )
 })
 
-test('buildSiteList: a site from any of the five templates is a website; another template is not', () => {
+test('buildSiteList: a site from any of the six templates is a website; another template is not', () => {
   const templates = {
     carpets: 'museumwithnofrontiers/gallery-template',
     'water-in-islam': 'museumwithnofrontiers/exhibition-template',
     islamicart: 'museumwithnofrontiers/website-template',
     'islamicart-the-mamluks': 'museumwithnofrontiers/minisite-template',
+    'baroqueart-absolutism': 'museumwithnofrontiers/baroqueart-minisite-template',
     'sharinghistory-travelling': 'museumwithnofrontiers/sharinghistory-minisite-template',
     elsewhere: 'someone-else/gallery-template',
     unrelated: 'museumwithnofrontiers/some-other-template',
   }
   const sites = buildSiteList('museumwithnofrontiers', Object.keys(templates), (name) => templates[name])
   assert.deepEqual(sites, [
+    'museumwithnofrontiers/baroqueart-absolutism',
     'museumwithnofrontiers/carpets',
     'museumwithnofrontiers/islamicart',
     'museumwithnofrontiers/islamicart-the-mamluks',

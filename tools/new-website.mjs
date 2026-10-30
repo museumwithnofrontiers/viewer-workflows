@@ -3,8 +3,9 @@
  * Create and configure a new MWNF website repository from its site template:
  * a product from website-template, a gallery from gallery-template, an
  * exhibition from exhibition-template (`--class` picks it; decision D5), a
- * mini-site, one of legacy's virtual exhibitions, from minisite-template, and
- * a Sharing History mini-site, a family of its own, from
+ * mini-site, one of Discover Islamic Art's virtual exhibitions, from
+ * minisite-template, and a Discover Baroque Art or a Sharing History mini-site,
+ * each a product of its own, from baroqueart-minisite-template or
  * sharinghistory-minisite-template.
  *
  * This is the mechanical part of the templates' READMEs, "Admin — creating a
@@ -45,10 +46,11 @@
  *   --slug <slug>          REQUIRED. Kebab-case. Also the repository name
  *                          and the data package's `<slug>-data`.
  *   --class <kind>         gallery | exhibition | standalone | minisite |
- *                          sharinghistory-minisite. Required unless
- *                          --settings-only. Picks the template:
- *                          gallery-template, exhibition-template,
- *                          website-template, minisite-template or
+ *                          baroqueart-minisite | sharinghistory-minisite.
+ *                          Required unless --settings-only. Picks the
+ *                          template: gallery-template, exhibition-template,
+ *                          website-template, minisite-template,
+ *                          baroqueart-minisite-template or
  *                          sharinghistory-minisite-template. A mini-site's
  *                          own values (src/minisite.json, its theme and
  *                          pictures) are written onto the first branch by
@@ -119,13 +121,15 @@ import {
 
 // The template each kind of website is created from (decision D5): a product
 // from the all-purpose scaffold, a DXA gallery or exhibition from its family's,
-// a mini-site from the mini-sites', a Sharing History mini-site from its
-// family's (its pages are not the other mini-sites').
+// a Discover Islamic Art mini-site from the mini-sites', a Discover Baroque Art
+// or a Sharing History mini-site from its product's (their pages are not the
+// other mini-sites').
 const CLASS_TEMPLATES = {
   gallery: 'gallery-template',
   exhibition: 'exhibition-template',
   standalone: 'website-template',
   minisite: 'minisite-template',
+  'baroqueart-minisite': 'baroqueart-minisite-template',
   'sharinghistory-minisite': 'sharinghistory-minisite-template',
 }
 const CLASSES = Object.keys(CLASS_TEMPLATES)
