@@ -130,11 +130,12 @@ gh pr create --fill && gh pr merge --auto --squash
 Use `npm install …@latest`, not `npm update`: update only moves within the
 declared range, so it does nothing when a release falls outside it.
 
-### After the sites: the five templates
+### After the sites: the six templates
 
 Propagation reaches every website, but not the templates they are created
 from: `website-template`, `gallery-template`, `exhibition-template`,
-`minisite-template` and `sharinghistory-minisite-template` carry
+`minisite-template`, `baroqueart-minisite-template` and
+`sharinghistory-minisite-template` carry
 no lockfile, so discovery skips them. A release a site had to adopt — a new
 major, a range the sites moved to, a file every site changed, a pinned
 viewer-workflows version — is therefore followed, the same day, by the same
@@ -144,7 +145,8 @@ A template that lags hands its next site an old platform.
 Verify a template by instantiating it: replace its placeholders with its
 reference site's own values (carpets for `gallery-template`, water-in-islam
 for `exhibition-template`, The Umayyads for `minisite-template` with
-inventory-app's `scripts/minisites/legacy-minisite.mjs --site`, Travelling for
+inventory-app's `scripts/minisites/legacy-minisite.mjs --site`, Absolutism for
+`baroqueart-minisite-template` with the same script, Travelling for
 `sharinghistory-minisite-template` with
 `scripts/minisites/sharinghistory-minisite.mjs --site`, any dataset
 for `website-template`), install, and
@@ -157,7 +159,8 @@ and nothing else may.
 "Admin — creating a new website": create the repository from the template of
 its `--class` (`website-template` for a product, `gallery-template` or
 `exhibition-template` for the DXA families — decision D5 —, `minisite-template`
-for legacy's virtual exhibitions, `sharinghistory-minisite-template` for
+for Discover Islamic Art's virtual exhibitions, `baroqueart-minisite-template`
+for Discover Baroque Art's, `sharinghistory-minisite-template` for
 Sharing History's), switch on the
 settings every live site carries (Pages, the `main-requires-pr` ruleset,
 classic branch protection with the four required checks, allow-auto-merge,
@@ -213,9 +216,10 @@ pointer, and the discovery dry-run) — see inventory-app's
 ## Which websites are consumers
 
 Derived, never listed. A website is a repository created from one of the
-five site templates — `website-template` for a product, `gallery-template`
-and `exhibition-template` for the DXA families, `minisite-template` and
-`sharinghistory-minisite-template` for legacy's virtual exhibitions — and
+six site templates — `website-template` for a product, `gallery-template`
+and `exhibition-template` for the DXA families, `minisite-template`,
+`baroqueart-minisite-template` and `sharinghistory-minisite-template` for
+legacy's virtual exhibitions — and
 GitHub records that
 permanently as `template_repository`. Both `package-ci.yml`'s downstream
 matrix and `tools/propagate.mjs` read it (the list is `SITE_TEMPLATES` in
