@@ -20,10 +20,17 @@ export const SCOPE = '@museumwnf'
 
 // The templates a website is created from: a product from `website-template`,
 // a gallery or an exhibition from its family's template, a mini-site from
-// `minisite-template`. A repository of the estate's owner whose
+// `minisite-template`, a Sharing History mini-site from
+// `sharinghistory-minisite-template`. A repository of the estate's owner whose
 // `template_repository` is one of these is a website. package-ci.yml's
-// "Discover websites" lists the same four.
-export const SITE_TEMPLATES = ['website-template', 'gallery-template', 'exhibition-template', 'minisite-template']
+// "Discover websites" lists the same five.
+export const SITE_TEMPLATES = [
+  'website-template',
+  'gallery-template',
+  'exhibition-template',
+  'minisite-template',
+  'sharinghistory-minisite-template',
+]
 
 
 /** Whether `fullName` (a `template_repository`) is one of `owner`'s site templates. */
