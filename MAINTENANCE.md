@@ -167,6 +167,13 @@ classic branch protection with the four required checks, allow-auto-merge,
 delete-branch-on-merge, CodeQL default setup, Dependabot security updates and
 vulnerability alerts), then scaffold the first branch (replace the template's
 placeholders, install `@museumwnf/<slug>-data@latest`, open the first PR).
+A gallery or an exhibition also inherits its template's `bootstrap.yml`,
+which fails until the `<TEMPLATE>_SETUP_COMPLETE` repository variable it reads
+is set. The tool sets it last, as the templates' `scripts/setup-repo.sh` does,
+and only when a fresh read finds every setting above in place; otherwise it
+names what is missing and exits non-zero, and `--settings-only` finishes the
+job. The run at creation still fails, as it precedes the settings; it passes
+from the scaffold PR's merge on.
 
 A gallery or an exhibition also needs its own colours: the family templates'
 palettes are placeholders their install guard refuses (inventory-app#2046,

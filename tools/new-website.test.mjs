@@ -33,6 +33,7 @@ import {
   parseNamePlaceholder,
   paletteReplacements,
   parsePaletteFile,
+  parseSetupMarker,
   parseTextPlaceholders,
   protectionNeedsChange,
   repoExists,
@@ -495,6 +496,27 @@ const CARPETS = {
 test('parsePaletteFile: the family templates name theirs; website-template has none', () => {
   assert.equal(parsePaletteFile(GALLERY_CHECK_PLACEHOLDERS), 'theme/tokens.css')
   assert.equal(parsePaletteFile(CHECK_PLACEHOLDERS_JS_VERBATIM), null)
+})
+
+// The marker step of gallery-template's .github/workflows/bootstrap.yml, read
+// 2026-11-01; its header names the variable in prose too, without `vars.`.
+const GALLERY_BOOTSTRAP_EXCERPT = `
+# (GALLERY_TEMPLATE_SETUP_COMPLETE) to a timestamp as its LAST step, reached
+      - name: Verify branch protection, auto-merge, Dependabot and CodeQL language coverage were set up
+        id: setup-complete
+        continue-on-error: true
+        env:
+          SETUP_COMPLETE: \${{ vars.GALLERY_TEMPLATE_SETUP_COMPLETE }}
+`
+
+test('parseSetupMarker: the variable bootstrap.yml reads, or null for a workflow that reads none', () => {
+  assert.equal(parseSetupMarker(GALLERY_BOOTSTRAP_EXCERPT), 'GALLERY_TEMPLATE_SETUP_COMPLETE')
+  assert.equal(
+    parseSetupMarker(GALLERY_BOOTSTRAP_EXCERPT.replaceAll('GALLERY_', 'EXHIBITION_')),
+    'EXHIBITION_TEMPLATE_SETUP_COMPLETE'
+  )
+  assert.equal(parseSetupMarker('# (GALLERY_TEMPLATE_SETUP_COMPLETE) named in a comment only\n'), null)
+  assert.equal(parseSetupMarker('env:\n  OTHER: ${{ vars.SOMETHING_ELSE }}\n'), null)
 })
 
 test('buildReplacements: a family template\'s __SITE_NAME__ is the --title', () => {

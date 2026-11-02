@@ -19,7 +19,11 @@
  * The family templates can also be used by hand — "Use this template" on
  * GitHub, then their own scripts/setup-repo.sh/.ps1 — so their settings are
  * written twice: in canonicalRuleset()/canonicalProtection() below and in
- * those scripts. A change to one is a change to the other.
+ * those scripts. A change to one is a change to the other. Those templates
+ * also ship `.github/workflows/bootstrap.yml`, which fails until the
+ * `<TEMPLATE>_SETUP_COMPLETE` repository variable it reads is set; like the
+ * scripts, this tool sets it last, once a fresh read finds every setting in
+ * place.
  *
  * What this deliberately does NOT do — these stay by hand, or are scripted
  * elsewhere, because they are content decisions or depend on inventory-app:
@@ -735,6 +739,68 @@ function ensureCodeScanning(fullName, dryRun) {
   }
 }
 
+// ── Settings: bootstrap.yml's setup marker ──────────────────────────────
+
+/** The repository variable a family template's `bootstrap.yml` reads as its setup
+ * marker (`GALLERY_TEMPLATE_SETUP_COMPLETE`, `EXHIBITION_TEMPLATE_SETUP_COMPLETE`), or
+ * `null` for a workflow that reads none. Parsed from the repository's own copy, like
+ * parseConfiguredFiles(), so the template stays authoritative and `--settings-only`
+ * needs no `--class`. */
+export function parseSetupMarker(source) {
+  const match = source.match(/\bvars\.([A-Z][A-Z0-9_]*_SETUP_COMPLETE)\b/)
+  return match ? match[1] : null
+}
+
+/** The settings a fresh read finds not in place, by label; empty when all are. The
+ * marker certifies them to bootstrap.yml, which cannot read them under GITHUB_TOKEN, so
+ * it is written only on this re-read, never on having reached the end of the phase. */
+function unsettledSettings(fullName) {
+  const rulesets = ghApiJson([`repos/${fullName}/rulesets`], {}) || []
+  const summary = rulesets.find((r) => r.name === RULESET_NAME)
+  const checks = [
+    ['Pages', pagesNeedsChange(ghApiJson([`repos/${fullName}/pages`, '--jq', '{build_type}'], {}))],
+    ['ruleset', rulesetNeedsChange(summary ? ghApiJson([`repos/${fullName}/rulesets/${summary.id}`], {}) : null)],
+    ['protection', protectionNeedsChange(ghApiJson([`repos/${fullName}/branches/main/protection`], {}))],
+    ['repo flags', repoFlagsNeedChange(ghApiJson([`repos/${fullName}`, '--jq', '{allow_auto_merge,delete_branch_on_merge}'], {}))],
+    ['security fixes', securityFixesNeedChange(ghApiJson([`repos/${fullName}/automated-security-fixes`], {}))],
+    ['CodeQL', codeScanningNeedsChange(ghApiJson([`repos/${fullName}/code-scanning/default-setup`], {}))],
+  ]
+  return checks.filter(([, needsChange]) => needsChange).map(([label]) => label)
+}
+
+function ensureSetupMarker(fullName, dryRun) {
+  let source = null
+  try {
+    source = ghApi(['-H', 'Accept: application/vnd.github.raw', `repos/${fullName}/contents/.github/workflows/bootstrap.yml`], { dryRun })
+  } catch {
+    // 404: a template without bootstrap.yml (website-template, the mini-site ones).
+  }
+  const marker = source && parseSetupMarker(source)
+  if (!marker) {
+    report('[Setup marker]', 'not needed (no bootstrap.yml reads one)')
+    return
+  }
+  if (dryRun) {
+    report('[Setup marker]', `would set ${marker} once a fresh read finds every setting in place`)
+    return
+  }
+
+  const missing = unsettledSettings(fullName)
+  if (missing.length) {
+    report('[Setup marker]', `${marker} NOT set, still not in place: ${missing.join(', ')} — re-run with --settings-only`)
+    process.exitCode = 1
+    return
+  }
+  const value = new Date().toISOString()
+  const existing = ghApiJson([`repos/${fullName}/actions/variables/${marker}`], {})
+  if (existing) {
+    ghApi([`repos/${fullName}/actions/variables/${marker}`, '-X', 'PATCH', '-f', `value=${value}`], {})
+  } else {
+    ghApi([`repos/${fullName}/actions/variables`, '-X', 'POST', '-f', `name=${marker}`, '-f', `value=${value}`], {})
+  }
+  report('[Setup marker]', `set ${marker} — bootstrap.yml passes from the next push on`)
+}
+
 // ── Settings phase ───────────────────────────────────────────────────────
 
 function ensureSettings(fullName, opts) {
@@ -746,6 +812,7 @@ function ensureSettings(fullName, opts) {
   ensureSecurityFixes(fullName, opts.dryRun)
   ensureVulnerabilityAlerts(fullName, opts.dryRun)
   ensureCodeScanning(fullName, opts.dryRun)
+  ensureSetupMarker(fullName, opts.dryRun)
 }
 
 // ── Content phase: placeholders ─────────────────────────────────────────
@@ -913,7 +980,7 @@ function scaffoldContent(fullName, opts, identityArgs) {
 // repoFlagsNeedChange, pagesNeedsChange, securityFixesNeedChange,
 // codeScanningNeedsChange, parseConfiguredFiles, parseNamePlaceholder,
 // parseTextPlaceholders, buildReplacements, applyReplacements, templateFor,
-// paletteReplacements, parsePaletteFile) without
+// paletteReplacements, parsePaletteFile, parseSetupMarker) without
 // running the CLI — which talks to `gh`, `npm` and the registry from its
 // very first line.
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
