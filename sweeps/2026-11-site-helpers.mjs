@@ -65,15 +65,17 @@ function withoutChipTable(dir, name, text) {
   return { text: call }
 }
 
-export async function apply({ dir, name, template, install }) {
+export async function apply({ dir, name, install }) {
   if (BY_HAND.has(name)) return 'its own pull request (R8)'
   const main = mainWithHelpers(read(dir, 'src/main.js'))
   if (!main) return "main.js is not the template's"
 
   await install(...VERSIONS)
 
-  if (template === 'gallery-template') {
-    const config = read(dir, 'src/dataset.config.js')
+  // A gallery by what its config calls, not by its template: the older sites
+  // were all created from website-template.
+  const config = read(dir, 'src/dataset.config.js')
+  if (config.includes('galleryConfig(')) {
     const { text, reason } = withoutChipTable(dir, name, config)
     if (reason) return reason
     if (text !== config) write(dir, 'src/dataset.config.js', text)

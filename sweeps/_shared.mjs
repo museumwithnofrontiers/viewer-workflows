@@ -17,8 +17,9 @@ export const shape = (text) => createHash('sha256').update(text).digest('hex').s
 /** The site's own texts namespace, from package.json's `viewerI18n`. */
 export const namespaceOf = (dir) => JSON.parse(read(dir, 'package.json')).viewerI18n?.namespace
 
-const LOCALE_LOOP = `// Every locales/<lang>.json holds this website's own texts, and may overload
-// any entry it receives. Local wins — that is the only merge rule there is.
+// The loop's comment names the site's kind ("this website's", "this
+// exhibition's"); the rewrite keeps the site's own words.
+const LOCALE_LOOP = `
 const localeFiles = import.meta.glob('../locales/*.json', { eager: true })
 const ownTexts = {}
 for (const [path, module] of Object.entries(localeFiles)) {
@@ -29,8 +30,7 @@ for (const [path, module] of Object.entries(localeFiles)) {
 createStandardViewer(config, undefined, { dictionary: sharedTexts, ownMessages: ownTexts })
 `
 
-const OWN_TEXTS = `// Every locales/<lang>.json holds this website's own texts, and may overload
-// any entry it receives. Local wins — that is the only merge rule there is.
+const OWN_TEXTS = `
 createStandardViewer(config, {
   dictionary: sharedTexts,
   ownMessages: textsByLanguage(import.meta.glob('../locales/*.json', { eager: true })),
