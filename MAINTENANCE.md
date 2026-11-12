@@ -54,6 +54,13 @@ tarball against every site: a green site PR carries no new information. The
 operator controls **when** propagation happens; CI controls **whether** it
 lands.
 
+**Propagate in batches.** Release as often as the work needs; propagate about
+once a day, with one `--expect` per package released since the last run.
+Every propagation opens a pull request, a CI run and a deploy on each of the
+85 sites, so one run that carries several releases costs a site the same as
+one that carries a single release. A release that a person is waiting to see
+live is the exception; propagate it straight away.
+
 ### Step 3, with the tool
 
 ```bash
@@ -153,6 +160,38 @@ for `website-template`), install, and
 run the checks. The family templates' smoke tests keep a few curatorial picks
 as `TODO(dataset)` on purpose; those tests fail the same way before and after,
 and nothing else may.
+
+## Changing every site's own files: the sweep
+
+Propagation moves a site to a published version and touches nothing else. A
+change every site of a family must make in its own files — adopting a new
+configuration factory, a shared test suite, dropping a file the templates no
+longer need — is a **sweep**: a small module under `sweeps/` describing the
+change, applied by `tools/sweep.mjs` to each site of the family, one pull
+request per site, merged on green like a propagation. The module stays in
+this repository afterwards, so what was done to the estate stays readable.
+`sweeps/README.md` says how to write one.
+
+A sweep that needs a new package version installs it itself (`ctx.install`);
+release that version first. Make the same change in the family's template
+the same day, as after a propagation.
+
+Try it before the real run, with the container of "Step 3, with the tool":
+
+```bash
+node tools/sweep.mjs --change sweeps/<change>.mjs --dry-run --out /w/diffs
+node tools/sweep.mjs --change sweeps/<change>.mjs --dry-run --verify --repo museumwithnofrontiers/<one-site>
+node tools/sweep.mjs --change sweeps/<change>.mjs
+```
+
+`--dry-run` applies the change in throwaway clones and writes each site's
+diff under `--out`; `--verify` also runs the site's install, lint, tests and
+build, and is slow, so use it on a few sites. `--family <template>` narrows a
+run to the sites created from that template; a module's own `families` is the
+default. The branch is the module's own (`chore/sweep-<name>`): as with
+propagation, a leftover branch with no open pull request is replaced, and an
+open one is reported `pending` and left alone.
+
 ## Creating a website
 
 `tools/new-website.mjs` scripts the mechanical part of the templates' READMEs,

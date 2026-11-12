@@ -891,6 +891,17 @@ export function applyReplacements(text, replacements) {
 
 // ── Content phase ────────────────────────────────────────────────────────
 
+/**
+ * A site's package.json without the template's placeholder guard: the
+ * `preinstall` that runs scripts/check-placeholders.js goes, any other
+ * `preinstall` stays. Formatting is npm's own (two spaces, final newline).
+ */
+export function withoutPlaceholderGuard(packageJson) {
+  const pkg = JSON.parse(packageJson)
+  if (pkg.scripts?.preinstall === 'node scripts/check-placeholders.js') delete pkg.scripts.preinstall
+  return `${JSON.stringify(pkg, null, 2)}\n`
+}
+
 function scaffoldContent(fullName, opts, identityArgs) {
   console.log('\nContent')
 
@@ -943,6 +954,14 @@ function scaffoldContent(fullName, opts, identityArgs) {
     // placeholder this tool missed fails the install right here, not silently in CI.
     run('npm', ['install', `${SCOPE}/${opts.slug}-data@latest`], { cwd: work, stdio: 'pipe' })
     report('[Dataset]', `installed ${SCOPE}/${opts.slug}-data@latest`)
+
+    // The guard has done its job: the install above passed it. A website keeps
+    // neither the script nor the `preinstall` that runs it — only a template,
+    // whose copies may still carry placeholders, needs them.
+    const packagePath = join(work, 'package.json')
+    writeFileSync(packagePath, withoutPlaceholderGuard(readFileSync(packagePath, 'utf8')))
+    rmSync(checkPlaceholdersPath)
+    report('[Guard]', 'removed scripts/check-placeholders.js and its preinstall')
 
     run('git', ['add', '-A'], { cwd: work, stdio: 'pipe' })
     const messageFile = join(tmpdir(), `new-website-message-${process.pid}`)

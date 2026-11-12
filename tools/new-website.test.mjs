@@ -42,6 +42,7 @@ import {
   securityFixesNeedChange,
   stableStringify,
   templateFor,
+  withoutPlaceholderGuard,
 } from './new-website.mjs'
 
 // ── parseArgs ────────────────────────────────────────────────────────────
@@ -574,4 +575,11 @@ test('the real gallery guard: passes a scaffolded tree, refuses one whose palett
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+test("withoutPlaceholderGuard: drops the guard's preinstall and nothing else", () => {
+  const pkg = { name: 'carpets', scripts: { preinstall: 'node scripts/check-placeholders.js', test: 'vitest run' } }
+  assert.deepEqual(JSON.parse(withoutPlaceholderGuard(JSON.stringify(pkg))).scripts, { test: 'vitest run' })
+  const own = { name: 'x', scripts: { preinstall: 'node scripts/other.js' } }
+  assert.equal(JSON.parse(withoutPlaceholderGuard(JSON.stringify(own))).scripts.preinstall, 'node scripts/other.js')
+  assert.ok(withoutPlaceholderGuard('{}').endsWith('}\n'))
 })
