@@ -15,13 +15,14 @@ Reusable GitHub Actions workflows for the MWNF Website Platform. Reference them 
 
 ## Operator tools
 
-Two scripts under `tools/`, run by an operator from their own machine (never in CI), sharing
-the `gh`/git plumbing in `tools/gh-lib.mjs`. Full usage and the container invocation for
+Three scripts under `tools/`, run by an operator from their own machine (never in CI), sharing
+the `gh`/git plumbing and the website discovery in `tools/gh-lib.mjs`. Full usage and the container invocation for
 each: [MAINTENANCE.md](MAINTENANCE.md).
 
 | Tool | Does |
 |---|---|
 | `tools/propagate.mjs` | Step 3 of [the release flow](MAINTENANCE.md#the-flow): rolls a newly published `@museumwnf` package out to every website, one pull request per site. |
+| `tools/sweep.mjs` | [The sweep](MAINTENANCE.md#changing-every-sites-own-files-the-sweep): applies one scripted change (a module under `sweeps/`) to the files of every website of a family, one pull request per site. |
 | `tools/new-website.mjs` | [Creating a website](MAINTENANCE.md#creating-a-website): creates a repository from its class's site template (`website-template`, `gallery-template`, `exhibition-template`, `minisite-template`, `baroqueart-minisite-template` or `sharinghistory-minisite-template`), applies the settings every live site carries (Pages, ruleset, branch protection, CodeQL, …), and opens the first scaffold pull request. |
 
 ## Package installs

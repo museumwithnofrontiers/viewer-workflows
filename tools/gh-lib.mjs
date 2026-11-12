@@ -205,3 +205,102 @@ export function ownerFromRemoteUrl(url) {
   const match = url.match(/github\.com[:/]([^/]+)\//)
   return match ? match[1] : null
 }
+
+// ── Discovery ──────────────────────────────────────────────────────────────
+
+/**
+ * Filters candidate repo names down to the sites actually created from one of
+ * `owner`'s site templates (`SITE_TEMPLATES`), sorted — or throws if none match.
+ *
+ * `getTemplate(name)` is injected rather than calling `gh` here directly, the
+ * same way resolveGitIdentity() takes `hasLocalIdentity` instead of shelling
+ * out to `git config` itself: it lets this decision logic — including the
+ * zero-match failure below — be tested without a network call or a real `gh`.
+ *
+ * Throws when nothing matches, rather than returning an empty list: a
+ * propagation that touches zero sites must never report success (that used
+ * to be exactly what happened whenever `owner` was wrong, e.g. pointed at an
+ * account that no longer holds the estate) — it must fail loudly enough that
+ * the operator can see it, right there, before the run declares victory.
+ */
+export function buildSiteList(owner, names, getTemplate) {
+  const expected = SITE_TEMPLATES.map((name) => `"${owner}/${name}"`).join(', ')
+  const sites = names
+    .filter((name) => isSiteTemplate(owner, getTemplate(name)))
+    .map((name) => `${owner}/${name}`)
+
+  if (!sites.length) {
+    throw new Error(
+      `Discovered 0 websites under owner "${owner}" (searched ${names.length} of its ` +
+      `repositories for a template_repository among ${expected}).\n` +
+      '  · This is almost always a wrong owner, not an empty estate — e.g. the estate\n' +
+      '    moved to a different account/org and this ran against the old one.\n' +
+      '  · Pass --owner <login-or-org> explicitly, or --repo <owner/name> to target\n' +
+      '    sites directly, bypassing discovery entirely.'
+    )
+  }
+
+  return sites.sort()
+}
+
+/**
+ * Every website, derived from the template link GitHub records permanently.
+ *
+ * The same rule drives package-ci.yml's downstream matrix, so the set of
+ * repositories validated before a release and the set updated after it cannot
+ * drift apart. There is no list to maintain.
+ *
+ * Blind spot, accepted knowingly: this finds repositories OWNED by `owner`
+ * that still carry the link. A site created by fork or transferred in is
+ * invisible — pass it with --repo.
+ *
+ * Each site comes with the template it was created from (its bare name, e.g.
+ * `gallery-template`): that link is the estate's only record of a site's
+ * family, which is what sweep.mjs selects sites by. propagate.mjs uses the
+ * repositories alone.
+ */
+export function discoverWebsites(owner) {
+  console.log(`Discovering websites created from ${SITE_TEMPLATES.map((name) => `${owner}/${name}`).join(', ')}`)
+
+  const names = gh([
+    'api', `users/${owner}/repos?per_page=100&type=owner`, '--paginate',
+    '--jq', '.[] | select(.archived == false) | .name',
+  ]).split('\n').filter(Boolean)
+
+  const templates = new Map()
+  const templateOf = (name) => {
+    if (!templates.has(name)) {
+      templates.set(name, gh(['api', `repos/${owner}/${name}`, '--jq', '.template_repository.full_name // ""']))
+    }
+    return templates.get(name)
+  }
+  const sites = buildSiteList(owner, names, templateOf)
+  const { ready, skipped } = scaffoldedOnly(sites, hasLockFile)
+  for (const site of skipped) console.log(`  skipped, not yet scaffolded: ${site}`)
+  return ready.map((repo) => ({ repo, template: templateOf(repo.split('/')[1]).split('/')[1] }))
+}
+
+/**
+ * A site whose scaffold pull request has not merged yet carries the template's
+ * tree without a `package-lock.json` on its default branch: there is nothing
+ * to bump there yet, and package-ci.yml leaves it out of its downstream matrix
+ * for the same reason (museumwithnofrontiers/viewer-workflows#30). Skipped
+ * sites are named, so the drop is visible.
+ *
+ * `hasLockFile(site)` is injected, as `getTemplate` is in buildSiteList().
+ */
+export function scaffoldedOnly(sites, hasLockFile) {
+  const ready = []
+  const skipped = []
+  for (const site of sites) (hasLockFile(site) ? ready : skipped).push(site)
+  return { ready, skipped }
+}
+
+export function hasLockFile(site) {
+  try {
+    gh(['api', `repos/${site}/contents/package-lock.json`, '--silent'], { stdio: ['ignore', 'pipe', 'ignore'] })
+    return true
+  } catch {
+    return false
+  }
+}
