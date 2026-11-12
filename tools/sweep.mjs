@@ -25,8 +25,9 @@
  *   --dry-run           Apply the change in a throwaway clone, report what it
  *                       changed, push nothing.
  *   --verify            After applying, run the site's `npm ci`, `npm run
- *                       lint`, `npm test` and `npm run build`; a site that
- *                       fails gets no pull request. Slow: meant with --dry-run
+ *                       lint`, `npm test` and `npm run build`; a site whose
+ *                       tests or build fail (lint only reports, as in CI)
+ *                       gets no pull request. Slow: meant with --dry-run
  *                       on a few sites before the real run.
  *   --out <dir>         Write each changed site's diff to <dir>/<site>.diff.
  *   --no-merge          Open the pull requests without enabling auto-merge.
@@ -144,18 +145,25 @@ async function sweepSite(site, change, { dryRun, verify, out, merge, identityArg
       writeFileSync(join(out, `${name}.diff`), run('git', ['diff', '--cached'], { cwd: work, maxBuffer: 64 * 1024 * 1024 }) + '\n')
     }
 
+    let lintNote = ''
     if (verify) {
       for (const script of [['ci'], ['run', 'lint'], ['test'], ['run', 'build']]) {
         try {
           run('npm', [...script, ...(script[0] === 'ci' ? ['--no-audit', '--no-fund'] : [])], { cwd: work, stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 })
         } catch (error) {
+          // ESLint only reports, as in the sites' CI (website-ci.yml): a site
+          // whose lint already failed before the change is not refused for it.
+          if (script[1] === 'lint') {
+            lintNote = ' (lint reports problems)'
+            continue
+          }
           const tail = String(error.stdout || '').split('\n').slice(-15).join('\n')
           return { repo: site.repo, status: 'failed', detail: `npm ${script.join(' ')} failed:\n${tail}` }
         }
       }
     }
 
-    if (dryRun) return { repo: site.repo, status: verify ? 'verified' : 'would-change', detail: stat }
+    if (dryRun) return { repo: site.repo, status: verify ? 'verified' : 'would-change', detail: stat + lintNote }
 
     const open = JSON.parse(gh(['pr', 'list', '--repo', site.repo, '--head', change.branch, '--state', 'open', '--json', 'url'], { cwd: work }))
     const existing = existingBranchAction(open)
