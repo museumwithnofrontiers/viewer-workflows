@@ -117,6 +117,15 @@ replaces such a leftover on its own. It only steps back, reporting the site as
 propagation waiting on a person is never overwritten. Merge or close that pull
 request, then rerun with `--repo` for that site.
 
+**Pins.** A run that discovers the sites also visits every entry of
+`PINNED_TARGETS`: a directory of another repository that pins a `@museumwnf`
+package at an exact version. Today there is one, the global search's loader in
+inventory-app (`museumwithnofrontiers/inventory-app:scripts/search`, inventory-app
+M15, ADR 005). It pins `@museumwnf/search-data`, and merging the pull request
+the tool opens there loads that version into the search index. The pin keeps
+its own branch, `chore/propagate-platform-packages-scripts-search`. With
+`--repo`, name it as `owner/name:dir`.
+
 The commit identity comes from `GIT_AUTHOR_*`/`GIT_COMMITTER_*` if you pass
 them (`-e GIT_AUTHOR_NAME=…` and so on), otherwise from the container's git
 config, otherwise it is derived from the `gh` login. Pass them when the

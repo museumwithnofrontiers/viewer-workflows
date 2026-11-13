@@ -26,7 +26,11 @@
  *                              no-op that looks like success.
  *   --repo <owner/name>        Restrict to one site. Repeatable. Also the
  *                              escape hatch for a site the discovery below
- *                              cannot see.
+ *                              cannot see. `<owner/name>:<dir>` names a pin
+ *                              instead (see PINNED_TARGETS): a directory whose
+ *                              package.json holds an exact version.
+ *   (no --repo)                Every discovered site, then every PINNED_TARGETS
+ *                              entry (the global search's pin in inventory-app).
  *   --owner <login-or-org>     The account whose repositories discovery
  *                              searches for sites created from
  *                              website-template. Defaults to the `origin`
@@ -82,6 +86,36 @@ export { buildSiteList, scaffoldedOnly } from './gh-lib.mjs'
 const BRANCH = 'chore/propagate-platform-packages'
 
 const discoverSites = (owner) => discoverWebsites(owner).map((site) => site.repo)
+
+/**
+ * Pins that are not a website's but follow the same publish: a directory of
+ * another repository whose package.json holds an EXACT version of a
+ * SCOPE package. The global search's loader (inventory-app M15, ADR 005)
+ * pins @museumwnf/search-data in inventory-app's scripts/search, and merging
+ * the pull request this opens loads that version into the search index.
+ * Propagated on every run that discovers the sites; with --repo, name one as
+ * `<owner/name>:<dir>`.
+ */
+export const PINNED_TARGETS = ['museumwithnofrontiers/inventory-app:scripts/search']
+
+/**
+ * A target of the run: `owner/name` is a website, at its repository's root,
+ * on a caret range; `owner/name:dir` is a pin in that directory, on an exact
+ * version.
+ */
+export function parseTarget(spec) {
+  const colon = spec.indexOf(':')
+  if (colon < 0) return { repo: spec, dir: '.', exact: false }
+  const repo = spec.slice(0, colon)
+  const dir = spec.slice(colon + 1).replace(/^\.?\/+|\/+$/g, '')
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !dir || dir.split('/').some((part) => part === '..' || part === '')) {
+    throw new Error(`--repo must be <owner/name> or <owner/name>:<dir>, got "${spec}"`)
+  }
+  return { repo, dir, exact: true }
+}
+
+/** How a target is named in the report and the pull request. */
+const targetName = (target) => (target.dir === '.' ? target.repo : `${target.repo}:${target.dir}`)
 
 // ── Arguments ──────────────────────────────────────────────────────────────
 
@@ -180,55 +214,68 @@ export function existingBranchAction(openPullRequests) {
     : { action: 'replace' }
 }
 
-function propagateTo(repo, { dryRun, merge, identityArgs }) {
+function propagateTo(target, { dryRun, merge, identityArgs }) {
+  const { repo, dir, exact } = typeof target === 'string' ? parseTarget(target) : target
+  const name = targetName({ repo, dir })
   const work = mkdtempSync(join(tmpdir(), 'propagate-'))
+  const pkgDir = join(work, dir)
   try {
     gh(['repo', 'clone', repo, work, '--', '--depth', '1'], { stdio: 'pipe' })
 
-    const deps = scopedDeps(work)
-    if (!deps.length) return { repo, status: 'skipped', detail: `no ${SCOPE} dependencies` }
+    const deps = scopedDeps(pkgDir)
+    if (!deps.length) return { repo: name, status: 'skipped', detail: `no ${SCOPE} dependencies` }
 
-    const before = readFileSync(join(work, 'package-lock.json'), 'utf8')
+    // A pin that has never been installed has no lockfile yet.
+    const lockPath = join(pkgDir, 'package-lock.json')
+    let before = ''
+    try {
+      before = readFileSync(lockPath, 'utf8')
+    } catch {
+      before = ''
+    }
 
     // `npm install <pkg>@latest` rather than `npm update`: update only moves
     // within the declared range, so it would silently do nothing whenever a
     // release falls outside it — which is every minor release while a package
     // is still 0.x. install@latest rewrites the range as well as the lockfile,
-    // which is what "adopt the published version" actually means.
-    run('npm', ['install', ...deps.map((d) => `${d}@latest`), '--no-audit', '--no-fund'], {
-      cwd: work,
+    // which is what "adopt the published version" actually means. A pin keeps
+    // an exact version: the version is the thing it pins.
+    run('npm', ['install', ...deps.map((d) => `${d}@latest`), ...(exact ? ['--save-exact'] : []), '--no-audit', '--no-fund'], {
+      cwd: pkgDir,
       stdio: 'pipe',
     })
 
-    const after = readFileSync(join(work, 'package-lock.json'), 'utf8')
-    if (before === after) return { repo, status: 'current', detail: 'already at latest' }
+    const after = readFileSync(lockPath, 'utf8')
+    if (before === after) return { repo: name, status: 'current', detail: 'already at latest' }
 
     const versions = deps
       .map((d) => {
-        const pkg = JSON.parse(readFileSync(join(work, 'package.json'), 'utf8'))
+        const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
         return `${d}@${(pkg.dependencies?.[d] ?? pkg.devDependencies?.[d] ?? '').replace('^', '')}`
       })
       .join(', ')
 
-    if (dryRun) return { repo, status: 'would-update', detail: versions }
+    if (dryRun) return { repo: name, status: 'would-update', detail: versions }
 
+    // One branch per pin, so a pin never waits on the same repository's site propagation.
+    const branch = dir === '.' ? BRANCH : `${BRANCH}-${dir.replace(/[^\w.-]+/g, '-')}`
     const open = JSON.parse(
-      gh(['pr', 'list', '--repo', repo, '--head', BRANCH, '--state', 'open', '--json', 'url'], { cwd: work })
+      gh(['pr', 'list', '--repo', repo, '--head', branch, '--state', 'open', '--json', 'url'], { cwd: work })
     )
     const existing = existingBranchAction(open)
     if (existing.action === 'skip') {
-      return { repo, status: 'pending', detail: `an earlier propagation is still open: ${existing.url}` }
+      return { repo: name, status: 'pending', detail: `an earlier propagation is still open: ${existing.url}` }
     }
 
-    run('git', ['checkout', '-b', BRANCH], { cwd: work, stdio: 'pipe' })
-    run('git', ['add', 'package.json', 'package-lock.json'], { cwd: work, stdio: 'pipe' })
+    run('git', ['checkout', '-b', branch], { cwd: work, stdio: 'pipe' })
+    run('git', ['add', join(dir, 'package.json'), join(dir, 'package-lock.json')], { cwd: work, stdio: 'pipe' })
 
     // Outside the clone: a file written inside it would be an untracked change,
     // and `gh pr create` warns about a dirty tree.
     const body = join(tmpdir(), `propagate-message-${process.pid}`)
     writeFileSync(
       body,
-      `chore(deps): adopt the published ${SCOPE} packages\n\n` +
+      (dir === '.' ? `chore(deps): adopt the published ${SCOPE} packages\n\n` : `chore(deps): pin the published ${SCOPE} packages in ${dir}\n\n`) +
       `${versions}\n\n` +
       'Opened by tools/propagate.mjs in museumwithnofrontiers/viewer-workflows. The release\n' +
       'was already built against this site by the package repository\'s own CI\n' +
@@ -241,18 +288,18 @@ function propagateTo(repo, { dryRun, merge, identityArgs }) {
     // against. The safety is existingBranchAction(): by the time this push
     // runs, whatever the remote BRANCH holds is a leftover with no open pull
     // request, which is exactly what `replace` means.
-    run('git', ['push', '--force', '-u', 'origin', BRANCH], { cwd: work, stdio: 'pipe' })
+    run('git', ['push', '--force', '-u', 'origin', branch], { cwd: work, stdio: 'pipe' })
 
     // --head is required alongside --repo: with an explicit repo, `gh` does not
     // infer the branch from the working directory.
-    const url = gh(['pr', 'create', '--repo', repo, '--head', BRANCH, '--fill'], { cwd: work })
+    const url = gh(['pr', 'create', '--repo', repo, '--head', branch, '--fill'], { cwd: work })
     if (merge) gh(['pr', 'merge', url, '--repo', repo, '--auto', '--squash'], { cwd: work })
 
-    return { repo, status: dryRun ? 'would-update' : 'opened', detail: url }
+    return { repo: name, status: dryRun ? 'would-update' : 'opened', detail: url }
   } catch (error) {
     // One site failing must not stop the rest; the summary reports it.
     const message = String(error.stderr || error.message).split('\n').slice(0, 3).join(' ')
-    return { repo, status: 'failed', detail: message }
+    return { repo: name, status: 'failed', detail: message }
   } finally {
     rmSync(work, { recursive: true, force: true })
   }
@@ -287,7 +334,7 @@ if (isMain) {
   console.log('Verifying the registry serves the expected versions')
   verifyPublished(expect)
 
-  const sites = repos.length ? repos : discoverSites(resolveOwner(owner))
+  const sites = repos.length ? repos : [...discoverSites(resolveOwner(owner)), ...PINNED_TARGETS]
   console.log(`\n${sites.length} website(s):`)
   for (const site of sites) console.log(`  ${site}`)
 
