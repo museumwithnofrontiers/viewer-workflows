@@ -22,7 +22,9 @@ import { test } from 'node:test'
 
 import {
   buildSiteList,
+  PINNED_TARGETS,
   existingBranchAction,
+  parseTarget,
   expandPackageName,
   scaffoldedOnly,
   scopedDeps,
@@ -308,4 +310,28 @@ test('existingBranchAction: an open pull request on the branch → skip, naming 
     action: 'skip',
     url: 'https://github.com/museumwithnofrontiers/carpets/pull/70',
   })
+})
+
+// ── Pins (the global search, inventory-app M15) ────────────────────────────
+
+test('parseTarget: a bare owner/name is a website at its root, on a caret range', () => {
+  assert.deepEqual(parseTarget('museumwithnofrontiers/carpets'), { repo: 'museumwithnofrontiers/carpets', dir: '.', exact: false })
+})
+
+test('parseTarget: owner/name:dir is a pin in that directory, on an exact version', () => {
+  assert.deepEqual(parseTarget('museumwithnofrontiers/inventory-app:scripts/search'), {
+    repo: 'museumwithnofrontiers/inventory-app', dir: 'scripts/search', exact: true,
+  })
+  assert.equal(parseTarget('o/r:./scripts/search/').dir, 'scripts/search')
+})
+
+test('parseTarget: refuses a directory that climbs out of the clone, or a malformed repository', () => {
+  for (const spec of ['o/r:../x', 'o/r:a/../../b', 'o/r:', 'not-a-repo:dir', 'o/r/x:dir']) {
+    assert.throws(() => parseTarget(spec), /--repo must be/, spec)
+  }
+})
+
+test('PINNED_TARGETS holds the global search pin, and every entry parses', () => {
+  assert.ok(PINNED_TARGETS.includes('museumwithnofrontiers/inventory-app:scripts/search'))
+  for (const spec of PINNED_TARGETS) assert.equal(parseTarget(spec).exact, true)
 })
