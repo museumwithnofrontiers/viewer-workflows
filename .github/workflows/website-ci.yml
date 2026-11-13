@@ -2,6 +2,16 @@ name: Website CI
 
 on:
   workflow_call:
+    inputs:
+      languages:
+        description: >-
+          Comma-separated languages the website offers, when it offers fewer
+          than its data package declares (a site whose pages are English
+          only, say). Passed to the texts check as `--languages`; empty, the
+          check reads the package's `manifest.site.languages`.
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -51,7 +61,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Check that every text a page asks for exists
-        run: npx viewer-i18n-check --app .
+        env:
+          LANGUAGES: ${{ inputs.languages }}
+        run: |
+          if [ -n "$LANGUAGES" ]; then
+            npx viewer-i18n-check --app . --languages "$LANGUAGES"
+          else
+            npx viewer-i18n-check --app .
+          fi
 
   lint:
     name: Lint (reported, non-blocking)
