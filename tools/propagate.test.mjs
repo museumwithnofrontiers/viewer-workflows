@@ -25,6 +25,8 @@ import {
   PINNED_TARGETS,
   existingBranchAction,
   parseTarget,
+  templateRanges,
+  templateTargets,
   expandPackageName,
   scaffoldedOnly,
   scopedDeps,
@@ -334,4 +336,41 @@ test('parseTarget: refuses a directory that climbs out of the clone, or a malfor
 test('PINNED_TARGETS holds the global search pin, and every entry parses', () => {
   assert.ok(PINNED_TARGETS.includes('museumwithnofrontiers/inventory-app:scripts/search'))
   for (const spec of PINNED_TARGETS) assert.equal(parseTarget(spec).exact, true)
+})
+
+test('templateRanges raises every published platform range and keeps the placeholder', () => {
+  const text = JSON.stringify({
+    name: '__SITE__',
+    dependencies: {
+      '@museumwnf/__DATASET__': '^1.0.0',
+      '@museumwnf/viewer-core': '^2.21.0',
+      '@museumwnf/viewer-layout': '^3.72.0',
+      vue: '^3.5.0',
+    },
+  }, null, 2) + '\n'
+  const next = templateRanges(text, { '@museumwnf/viewer-core': '2.23.1', '@museumwnf/viewer-layout': '3.77.0' })
+  assert.deepEqual(JSON.parse(next).dependencies, {
+    '@museumwnf/__DATASET__': '^1.0.0',
+    '@museumwnf/viewer-core': '^2.23.1',
+    '@museumwnf/viewer-layout': '^3.77.0',
+    vue: '^3.5.0',
+  })
+  assert.ok(next.endsWith('\n'))
+  assert.ok(next.includes('\n  "name"'))
+})
+
+test('templateRanges reports nothing to do when the ranges are current', () => {
+  const text = JSON.stringify({ dependencies: { '@museumwnf/viewer-core': '^2.23.1' } })
+  assert.equal(templateRanges(text, { '@museumwnf/viewer-core': '2.23.1' }), null)
+})
+
+test('templateTargets names the six site templates of the estate', () => {
+  assert.deepEqual(templateTargets('museumwithnofrontiers'), [
+    'museumwithnofrontiers/website-template',
+    'museumwithnofrontiers/gallery-template',
+    'museumwithnofrontiers/exhibition-template',
+    'museumwithnofrontiers/minisite-template',
+    'museumwithnofrontiers/baroqueart-minisite-template',
+    'museumwithnofrontiers/sharinghistory-minisite-template',
+  ])
 })
