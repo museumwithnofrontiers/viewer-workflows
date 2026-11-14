@@ -30,7 +30,9 @@
  *                              instead (see PINNED_TARGETS): a directory whose
  *                              package.json holds an exact version.
  *   (no --repo)                Every discovered site, then every PINNED_TARGETS
- *                              entry (the global search's pin in inventory-app).
+ *                              entry (the global search's pin in inventory-app),
+ *                              then every template new sites are created from
+ *                              (templateTargets, package.json ranges only).
  *   --owner <login-or-org>     The account whose repositories discovery
  *                              searches for sites created from
  *                              website-template. Defaults to the `origin`
@@ -62,13 +64,14 @@
  * per site.
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import {
   SCOPE,
+  SITE_TEMPLATES,
   discoverWebsites,
   ensureGhAuth,
   gh,
@@ -97,6 +100,41 @@ const discoverSites = (owner) => discoverWebsites(owner).map((site) => site.repo
  * `<owner/name>:<dir>`.
  */
 export const PINNED_TARGETS = ['museumwithnofrontiers/inventory-app:scripts/search']
+
+/**
+ * The template repositories new sites are created from. A template carries no
+ * lockfile (its data package is a placeholder, `@museumwnf/__DATASET__`, that
+ * npm cannot resolve), so `npm install` cannot run there. A run raises the
+ * template's platform ranges in package.json alone to `^<latest>` (see
+ * templateRanges), so a site created from it starts on the platform the other
+ * sites are on, not on the one current when the template was last edited.
+ * They are the owner's SITE_TEMPLATES, the list site discovery reads. Any
+ * website target with no lockfile is handled this way, so
+ * `--repo museumwithnofrontiers/gallery-template` works too.
+ */
+export const templateTargets = (owner) => SITE_TEMPLATES.map((name) => `${owner}/${name}`)
+
+/**
+ * A template's package.json text with every range named in `latest` raised to
+ * `^<version>`. `latest` maps a package name to its published version; a name
+ * it lacks (the data package placeholder) keeps its range. Returns the new
+ * text, or null when nothing changes.
+ */
+export function templateRanges(text, latest) {
+  const pkg = JSON.parse(text)
+  let changed = false
+  for (const field of ['dependencies', 'devDependencies']) {
+    for (const name of Object.keys(pkg[field] ?? {})) {
+      const version = latest[name]
+      if (!version || pkg[field][name] === `^${version}`) continue
+      pkg[field][name] = `^${version}`
+      changed = true
+    }
+  }
+  if (!changed) return null
+  const indent = /^(\s+)"/m.exec(text)?.[1] ?? '  '
+  return JSON.stringify(pkg, null, indent) + (text.endsWith('\n') ? '\n' : '')
+}
 
 /**
  * A target of the run: `owner/name` is a website, at its repository's root,
@@ -225,37 +263,59 @@ function propagateTo(target, { dryRun, merge, identityArgs }) {
     const deps = scopedDeps(pkgDir)
     if (!deps.length) return { repo: name, status: 'skipped', detail: `no ${SCOPE} dependencies` }
 
-    // A pin that has never been installed has no lockfile yet.
+    // A pin that has never been installed has no lockfile yet; a template
+    // never has one (TEMPLATE_TARGETS).
     const lockPath = join(pkgDir, 'package-lock.json')
-    let before = ''
-    try {
-      before = readFileSync(lockPath, 'utf8')
-    } catch {
-      before = ''
-    }
+    const template = !exact && !existsSync(lockPath)
+    let versions
+    if (template) {
+      // Only the ranges move: the placeholder data package has no version,
+      // so `npm view` fails for it and it keeps its range.
+      const latest = {}
+      for (const d of deps) {
+        try {
+          latest[d] = run('npm', ['view', d, 'version'])
+        } catch {
+          // The placeholder.
+        }
+      }
+      const manifest = join(pkgDir, 'package.json')
+      const next = templateRanges(readFileSync(manifest, 'utf8'), latest)
+      if (!next) return { repo: name, status: 'current', detail: 'template ranges already at latest' }
+      versions = Object.entries(latest).map(([d, v]) => `${d}@${v}`).join(', ')
+      if (dryRun) return { repo: name, status: 'would-update', detail: `template ranges: ${versions}` }
+      writeFileSync(manifest, next)
+    } else {
+      let before = ''
+      try {
+        before = readFileSync(lockPath, 'utf8')
+      } catch {
+        before = ''
+      }
 
-    // `npm install <pkg>@latest` rather than `npm update`: update only moves
-    // within the declared range, so it would silently do nothing whenever a
-    // release falls outside it — which is every minor release while a package
-    // is still 0.x. install@latest rewrites the range as well as the lockfile,
-    // which is what "adopt the published version" actually means. A pin keeps
-    // an exact version: the version is the thing it pins.
-    run('npm', ['install', ...deps.map((d) => `${d}@latest`), ...(exact ? ['--save-exact'] : []), '--no-audit', '--no-fund'], {
-      cwd: pkgDir,
-      stdio: 'pipe',
-    })
-
-    const after = readFileSync(lockPath, 'utf8')
-    if (before === after) return { repo: name, status: 'current', detail: 'already at latest' }
-
-    const versions = deps
-      .map((d) => {
-        const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
-        return `${d}@${(pkg.dependencies?.[d] ?? pkg.devDependencies?.[d] ?? '').replace('^', '')}`
+      // `npm install <pkg>@latest` rather than `npm update`: update only moves
+      // within the declared range, so it would silently do nothing whenever a
+      // release falls outside it — which is every minor release while a package
+      // is still 0.x. install@latest rewrites the range as well as the lockfile,
+      // which is what "adopt the published version" actually means. A pin keeps
+      // an exact version: the version is the thing it pins.
+      run('npm', ['install', ...deps.map((d) => `${d}@latest`), ...(exact ? ['--save-exact'] : []), '--no-audit', '--no-fund'], {
+        cwd: pkgDir,
+        stdio: 'pipe',
       })
-      .join(', ')
 
-    if (dryRun) return { repo: name, status: 'would-update', detail: versions }
+      const after = readFileSync(lockPath, 'utf8')
+      if (before === after) return { repo: name, status: 'current', detail: 'already at latest' }
+
+      versions = deps
+        .map((d) => {
+          const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
+          return `${d}@${(pkg.dependencies?.[d] ?? pkg.devDependencies?.[d] ?? '').replace('^', '')}`
+        })
+        .join(', ')
+
+      if (dryRun) return { repo: name, status: 'would-update', detail: versions }
+    }
 
     // One branch per pin, so a pin never waits on the same repository's site propagation.
     const branch = dir === '.' ? BRANCH : `${BRANCH}-${dir.replace(/[^\w.-]+/g, '-')}`
@@ -268,14 +328,16 @@ function propagateTo(target, { dryRun, merge, identityArgs }) {
     }
 
     run('git', ['checkout', '-b', branch], { cwd: work, stdio: 'pipe' })
-    run('git', ['add', join(dir, 'package.json'), join(dir, 'package-lock.json')], { cwd: work, stdio: 'pipe' })
+    run('git', ['add', join(dir, 'package.json'), ...(template ? [] : [join(dir, 'package-lock.json')])], { cwd: work, stdio: 'pipe' })
 
     // Outside the clone: a file written inside it would be an untracked change,
     // and `gh pr create` warns about a dirty tree.
     const body = join(tmpdir(), `propagate-message-${process.pid}`)
     writeFileSync(
       body,
-      (dir === '.' ? `chore(deps): adopt the published ${SCOPE} packages\n\n` : `chore(deps): pin the published ${SCOPE} packages in ${dir}\n\n`) +
+      (template
+        ? `chore(deps): raise the template's ${SCOPE} ranges to the published versions\n\n`
+        : dir === '.' ? `chore(deps): adopt the published ${SCOPE} packages\n\n` : `chore(deps): pin the published ${SCOPE} packages in ${dir}\n\n`) +
       `${versions}\n\n` +
       'Opened by tools/propagate.mjs in museumwithnofrontiers/viewer-workflows. The release\n' +
       'was already built against this site by the package repository\'s own CI\n' +
@@ -334,7 +396,8 @@ if (isMain) {
   console.log('Verifying the registry serves the expected versions')
   verifyPublished(expect)
 
-  const sites = repos.length ? repos : [...discoverSites(resolveOwner(owner)), ...PINNED_TARGETS]
+  const estate = repos.length ? null : resolveOwner(owner)
+  const sites = repos.length ? repos : [...discoverSites(estate), ...PINNED_TARGETS, ...templateTargets(estate)]
   console.log(`\n${sites.length} website(s):`)
   for (const site of sites) console.log(`  ${site}`)
 

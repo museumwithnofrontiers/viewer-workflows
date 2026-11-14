@@ -148,14 +148,20 @@ declared range, so it does nothing when a release falls outside it.
 
 ### After the sites: the six templates
 
-Propagation reaches every website, but not the templates they are created
-from: `website-template`, `gallery-template`, `exhibition-template`,
-`minisite-template`, `baroqueart-minisite-template` and
-`sharinghistory-minisite-template` carry
-no lockfile, so discovery skips them. A release a site had to adopt — a new
-major, a range the sites moved to, a file every site changed, a pinned
-viewer-workflows version — is therefore followed, the same day, by the same
-change in each template it concerns: the `package.json` ranges and the files.
+The templates the sites are created from — `website-template`,
+`gallery-template`, `exhibition-template`, `minisite-template`,
+`baroqueart-minisite-template` and `sharinghistory-minisite-template` — carry
+no lockfile (their data package is a placeholder npm cannot resolve), so the
+tool cannot `npm install` there. A run that discovers the sites visits them
+last and raises their platform ranges in `package.json` alone to `^<latest>`
+(`templateTargets`, `templateRanges`); the placeholder keeps its range. The
+pull request it opens there has nothing to build, and merges at once. With
+`--repo`, name a template like a site: a target without a lockfile is treated
+as one.
+
+What the tool does not carry is the rest: a file every site changed, a
+pinned viewer-workflows version, a new major's code changes. Such a release
+is followed, the same day, by the same change in each template it concerns.
 A template that lags hands its next site an old platform.
 
 Verify a template by instantiating it: replace its placeholders with its
